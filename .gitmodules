@@ -1,0 +1,6 @@
+[submodule "buckal-bundles"]
+	path = buckal-bundles
+	url = git@github.com:yueneiqi/buckal-bundles.git
+[submodule "cargo-buckal"]
+	path = cargo-buckal
+	url = git@github.com:yueneiqi/cargo-buckal.git
