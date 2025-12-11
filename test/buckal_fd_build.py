@@ -53,6 +53,16 @@ def main() -> None:
         help="Buck2 target to build (default: //:fd)",
     )
     parser.add_argument(
+        "--test",
+        action="store_true",
+        help="after a successful build, run buck2 test",
+    )
+    parser.add_argument(
+        "--buck2-test-target",
+        default="//...",
+        help="buck2 test target to run when --test is set (default: //...)",
+    )
+    parser.add_argument(
         "--no-fetch",
         action="store_true",
         help="skip fetching latest buckal bundles (defaults to fetching)",
@@ -213,6 +223,11 @@ def main() -> None:
         # Step 2: build fd with Buck2.
         run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
         print("✅ Buck2 build finished")
+
+        # Optional: run the test suite.
+        if args.test:
+            run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
+            print("✅ Buck2 tests finished")
     finally:
         if temp_dir and not args.keep_temp:
             shutil.rmtree(temp_dir, ignore_errors=True)
