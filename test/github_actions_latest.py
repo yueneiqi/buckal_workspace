@@ -13,10 +13,12 @@ import json
 import os
 import sys
 from datetime import datetime
-from typing import Any, Tuple
+from io import BytesIO
+from typing import Any, Iterable, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
+import zipfile
 
 
 API_BASE = "https://api.github.com"
@@ -41,6 +43,46 @@ def fetch_json(url: str, token: str | None) -> Tuple[Any, dict[str, str]]:
         return payload, headers
 
 
+class NoRedirect(HTTPRedirectHandler):
+    """Handler that prevents automatic redirects so we can capture Location."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def fetch_bytes(url: str, token: str | None) -> Tuple[bytes, dict[str, str]]:
+    """
+    Fetch bytes, following at most one external redirect (for Actions log blobs).
+    GitHub's log endpoints return a 302 to a signed blob URL; we grab the
+    Location ourselves to avoid auth issues and then fetch without credentials.
+    """
+    req = build_request(url, token)
+    opener = build_opener(NoRedirect())
+    try:
+        with opener.open(req) as resp:
+            content = resp.read()
+            headers = {k: v for k, v in resp.headers.items()}
+            return content, headers
+    except HTTPError as exc:
+        if exc.code in (301, 302, 303, 307, 308):
+            location = exc.headers.get("Location")
+            if not location:
+                raise
+            # Follow the signed blob URL without GitHub auth headers.
+            req2 = Request(
+                location,
+                headers={
+                    "Accept": "*/*",
+                    "User-Agent": "buckal-actions-helper/1.0",
+                },
+            )
+            with urlopen(req2) as resp2:
+                content = resp2.read()
+                headers = {k: v for k, v in resp2.headers.items()}
+                return content, headers
+        raise
+
+
 def parse_timestamp(ts: str | None) -> str:
     if not ts:
         return "unknown time"
@@ -63,6 +105,33 @@ def latest_run(repo: str, token: str | None, branch: str | None) -> dict[str, An
     if not runs:
         return None
     return runs[0]
+
+
+def list_jobs(run_id: int, repo: str, token: str | None) -> list[dict[str, Any]]:
+    url = f"{API_BASE}/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"
+    data, _ = fetch_json(url, token)
+    return data.get("jobs", [])
+
+
+def iter_job_logs(job_id: int, repo: str, token: str | None) -> Iterable[tuple[str, str]]:
+    """
+    Yield (filename, text) pairs from the job log archive.
+
+    GitHub returns a zip; we unzip and stream each file's contents.
+    """
+    url = f"{API_BASE}/repos/{repo}/actions/jobs/{job_id}/logs"
+    raw, headers = fetch_bytes(url, token)
+    ctype = headers.get("Content-Type", "")
+    if "zip" not in ctype and not zipfile.is_zipfile(BytesIO(raw)):
+        # Fallback: treat response as plain text
+        yield ("job.log", raw.decode("utf-8", errors="replace"))
+        return
+
+    with zipfile.ZipFile(BytesIO(raw)) as zf:
+        for name in sorted(zf.namelist()):
+            with zf.open(name) as fp:
+                text = fp.read().decode("utf-8", errors="replace")
+                yield (name, text)
 
 
 def format_run(run: dict[str, Any]) -> str:
@@ -107,16 +176,26 @@ def main() -> None:
     )
     parser.add_argument(
         "--token",
-        help="GitHub token; falls back to GITHUB_TOKEN env var",
+        help="GitHub token; falls back to GITHUB_TOKEN or GITHUB_ACCESS_TOKEN env vars",
     )
     parser.add_argument(
         "--json",
         action="store_true",
         help="print raw JSON for the latest run",
     )
+    parser.add_argument(
+        "--dump-log",
+        action="store_true",
+        help="download and print logs for jobs whose name starts with 'b2'",
+    )
     args = parser.parse_args()
 
-    token = args.token or os.getenv("GITHUB_TOKEN")
+    token = args.token or os.getenv("GITHUB_TOKEN") or os.getenv("GITHUB_ACCESS_TOKEN")
+
+    if args.dump_log and not token:
+        sys.exit(
+            "Log download requires authentication. Set --token, GITHUB_TOKEN, or GITHUB_ACCESS_TOKEN with actions:read scope."
+        )
 
     try:
         run = latest_run(args.repo, token, args.branch)
@@ -134,6 +213,24 @@ def main() -> None:
         print(json.dumps(run, indent=2))
     else:
         print(format_run(run))
+
+    if args.dump_log:
+        jobs = list_jobs(run["id"], args.repo, token)
+        matched = [j for j in jobs if str(j.get("name", "")).startswith("b2")]
+        if not matched:
+            print("No jobs with name starting with 'b2' found.", file=sys.stderr)
+            return
+
+        for job in matched:
+            jname = job.get("name", "unknown")
+            jid = job.get("id")
+            print(f"\n=== Logs for job '{jname}' (id {jid}) ===")
+            try:
+                for fname, text in iter_job_logs(int(jid), args.repo, token):
+                    print(f"\n# {fname}")
+                    print(text.rstrip())
+            except Exception as exc:  # pragma: no cover - log download edge cases
+                print(f"Failed to fetch logs for job {jid}: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
