@@ -4,3 +4,6 @@
 [submodule "cargo-buckal"]
 	path = cargo-buckal
 	url = git@github.com:yueneiqi/cargo-buckal.git
+[submodule "test/3rd/fd"]
+	path = test/3rd/fd
+	url = git@github.com:yueneiqi/fd-test.git
