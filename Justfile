@@ -14,3 +14,11 @@ clean:
 
 test-fd:
 	cd "{{root}}" && uv run test/buckal_fd_build.py --test
+
+actions-latest repo="yueneiqi/fd-test" branch="":
+	cd "{{root}}" && \
+	  if [ -n "{{branch}}" ]; then \
+	    uv run test/github_actions_latest.py --repo "{{repo}}" --branch "{{branch}}"; \
+	  else \
+	    uv run test/github_actions_latest.py --repo "{{repo}}"; \
+	  fi
