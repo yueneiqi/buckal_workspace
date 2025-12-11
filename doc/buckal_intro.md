@@ -65,3 +65,10 @@ Buckal 项目架构主要分为 CLI, Snapshot, Core, Prelude 四层，其中前�
 
 其中，CLI 模块负责提供与 Cargo 一致的命令行接口，解析用户输入并执行相应操作；所有命令行操作最终都将反应为项目依赖图的更改，由 Snapshot 模块进行差异比较后调用 buckify 模块对 BUCK 文件进行增量更新。
 
+### 什么是 “bundle”
+在 Buckal 语境下，“bundle” 指配套的 Buck2 规则与工具集（仓库 `buckal-bundles`）。它作为一个 Buck2 cell（名为 `buckal`）被引入，包含：
+- Starlark 规则与宏：例如 `wrapper.bzl`、`cargo_buildscript.bzl`，用于把 Cargo 元数据映射到 Buck2 目标（rust_binary、rust_library 等）。
+- 辅助脚本与默认配置：工具脚本、默认 `PACKAGE`、模式配置等。
+- 生成的 BUCK 文件通过 `load("@buckal//:wrapper.bzl", ...)` 调用这些规则完成编译。
+
+不同版本或精简版的 bundle 可能导出的符号集合不同（比如有的没有 `rust_test`），因此在自动生成 BUCK 时需要与实际 bundle 内容保持一致，避免加载缺失符号导致的解析错误。
