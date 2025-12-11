@@ -11,3 +11,6 @@ release:
 
 clean:
 	cd "{{root}}/cargo-buckal" && cargo clean
+
+test-fd:
+	cd "{{root}}" && uv run test/buckal_fd_build.py --test
