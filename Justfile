@@ -22,3 +22,6 @@ actions-latest repo="yueneiqi/fd-test" branch="":
 	  else \
 	    uv run test/github_actions_latest.py --repo "{{repo}}"; \
 	  fi
+
+dump-log:
+	cd "{{root}}" && uv run test/github_actions_latest.py --dump-log

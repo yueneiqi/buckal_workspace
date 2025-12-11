@@ -14,15 +14,18 @@ import os
 import sys
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
+import re
 from typing import Any, Iterable, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 import zipfile
 
 
 API_BASE = "https://api.github.com"
 DEFAULT_REPO = "yueneiqi/fd-test"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def build_request(url: str, token: str | None) -> Request:
@@ -92,6 +95,21 @@ def parse_timestamp(ts: str | None) -> str:
         return dt.strftime("%Y-%m-%d %H:%M:%S %Z")
     except ValueError:
         return ts
+
+
+def make_date_slug(ts: str | None) -> str:
+    if not ts:
+        return "unknown"
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone()
+        return dt.strftime("%Y-%m-%d_%H-%M")
+    except ValueError:
+        return "unknown"
+
+
+def safe_name(name: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", (name or "").strip())
+    return cleaned or "job"
 
 
 def latest_run(repo: str, token: str | None, branch: str | None) -> dict[str, Any] | None:
@@ -186,7 +204,7 @@ def main() -> None:
     parser.add_argument(
         "--dump-log",
         action="store_true",
-        help="download and print logs for jobs whose name starts with 'b2'",
+        help="download logs for jobs whose name starts with 'b2'; saves failed job logs to files",
     )
     args = parser.parse_args()
 
@@ -221,16 +239,34 @@ def main() -> None:
             print("No jobs with name starting with 'b2' found.", file=sys.stderr)
             return
 
+        date_slug = make_date_slug(run.get("created_at"))
+        log_dir = REPO_ROOT / "log" / date_slug
+        log_dir.mkdir(parents=True, exist_ok=True)
+
         for job in matched:
             jname = job.get("name", "unknown")
             jid = job.get("id")
-            print(f"\n=== Logs for job '{jname}' (id {jid}) ===")
+            conclusion = (job.get("conclusion") or "").lower()
+
+            if conclusion == "success":
+                print(f"job '{jname}' succeeded; logs not fetched")
+                continue
+
             try:
+                log_parts: list[str] = []
                 for fname, text in iter_job_logs(int(jid), args.repo, token):
-                    print(f"\n# {fname}")
-                    print(text.rstrip())
+                    log_parts.append(f"# {fname}\n{text}")
+                combined = "\n\n".join(log_parts).rstrip() + "\n"
+                out_path = log_dir / f"{safe_name(jname)}_{jid}.log"
+                out_path.write_text(combined)
+                print(f"job '{jname}' failed; logs written to {out_path}")
             except Exception as exc:  # pragma: no cover - log download edge cases
-                print(f"Failed to fetch logs for job {jid}: {exc}", file=sys.stderr)
+                err_path = log_dir / f"{safe_name(jname)}_{jid}.err.log"
+                err_path.write_text(f"Error fetching logs for job {jid}: {exc}\n")
+                print(
+                    f"Failed to fetch logs for job {jid}: {exc} (saved to {err_path})",
+                    file=sys.stderr,
+                )
 
 
 if __name__ == "__main__":
