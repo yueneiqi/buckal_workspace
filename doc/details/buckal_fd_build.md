@@ -24,6 +24,11 @@
 - 设置 `PYO3_PYTHON` 为当前 `python3`，并补齐 `LD_LIBRARY_PATH`（或 macOS 下 `DYLD_LIBRARY_PATH`）以保证 `cargo-buckal` 动态链接到正确的 libpython。
 - 使用独立的 `CARGO_TARGET_DIR=target/buckal-py`，防止重用旧的二进制导致 Python ABI 不匹配。
 
+### Q: 为什么在拷贝的 `cargo_buildscript.bzl` 里注入 `NUM_JOBS=1`？
+- Buck2 的 buildscript 运行环境默认没有 Cargo 的变量，而不少 `build.rs`（如 `tikv-jemalloc-sys`）会 `expect_env("NUM_JOBS")`，缺失就 panic。
+- 注入 `env["NUM_JOBS"] = "1"` 是最小仿真 Cargo 行为的补丁：有值即可通过检查，且默认 1 避免误导并行度。
+- 改动仅作用于工作区里拷贝的 bundle，不影响上游仓库。
+
 ## 示例
 ```bash
 # 默认：临时目录构建
