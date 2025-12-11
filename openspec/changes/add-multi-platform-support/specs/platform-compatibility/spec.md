@@ -6,6 +6,10 @@ The system SHALL map Rust Tier1 target triples to Buck platform constraints `pre
 - **WHEN** the target triple belongs to the linux-gnu family
 - **THEN** the generated platform constraints include `prelude//os:linux`.
 
+#### Scenario: Intel macOS triple mapping
+- **WHEN** the target triple is `x86_64-apple-darwin`
+- **THEN** the generated platform constraints include `prelude//os:macos`.
+
 #### Scenario: Unknown triple fallback
 - **WHEN** a target triple is not recognized in the mapping
 - **THEN** generation proceeds without applying any platform constraint.
