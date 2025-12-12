@@ -172,6 +172,11 @@ def main() -> None:
         help="Buck2 target to build (default: //:fd)",
     )
     parser.add_argument(
+        "--multi-platform",
+        action="store_true",
+        help="also build //:fd for additional target platforms",
+    )
+    parser.add_argument(
         "--test",
         action="store_true",
         help="after a successful build, run buck2 test",
@@ -367,6 +372,20 @@ def main() -> None:
         ensure_valid_buck2_daemon(workspace, env)
         run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
         print("✅ Buck2 build finished")
+
+        # Step 2b: optionally build fd for additional target platforms.
+        if args.multi_platform:
+            ensure_valid_buck2_daemon(workspace, env)
+            for platform in (
+                "//platforms:x86_64-unknown-linux-gnu",
+                "//platforms:i686-unknown-linux-gnu",
+            ):
+                run(
+                    ["buck2", "build", "//:fd", "--target-platforms", platform],
+                    cwd=workspace,
+                    env=env,
+                )
+            print("✅ Buck2 multi-platform builds finished")
 
         # Optional: run the test suite.
         if args.test:
