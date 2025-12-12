@@ -15,10 +15,10 @@ The system SHALL map Rust Tier1 target triples to Buck platform constraints `pre
 - **THEN** generation proceeds without applying any platform constraint.
 
 ### Requirement: Platform compatibility on rules
-The system SHALL set `compatible_with` on generated Buck rules for crates constrained to specific `target_os` or `target_family` values.
+The system SHALL set `compatible_with` on generated Buck rules for crates constrained to specific OS values.
 
 #### Scenario: Windows-only crate
-- **WHEN** crate metadata includes `cfg(target_os = "windows")`
+- **WHEN** a crate is known to be Windows‑only (via allowlist or cfg analysis)
 - **THEN** its Buck rule has `compatible_with = ["prelude//os:windows"]`.
 
 ### Requirement: Conditional dependencies via os_deps

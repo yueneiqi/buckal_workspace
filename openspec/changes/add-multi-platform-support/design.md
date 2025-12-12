@@ -6,11 +6,11 @@ Buckal currently emits BUCK rules tied to the host platform. Platform-conditiona
 - Non-Goals: cross-arch optimization, fine-grained `target_env`/`target_vendor` matrices, auto-creating Buck platform definitions.
 
 ## Decisions
-- Platform dictionary: table-driven mapping from Rust triple to `prelude//os:{linux,macos,windows}`; retain package-specific overrides (e.g., `hyper-named-pipe`).
-- Cfg parsing: use `cargo_platform` to evaluate `target_os`/`target_family` with `any/all/not`; on parse failure, treat dependency as universal and log at debug.
-- Emission: nodes set `compatible_with` from platform set; edges carry `os_deps` keyed by OS plus a default branch for unconditional deps.
-- Bundles: extend rust_* rules to accept `os_deps`, expand into Buck `select` or platform filtering; when `os_deps` empty, behavior matches current deps to avoid churn.
-- Caching: snapshot/signature should include platform model version so stale caches regenerate when model changes.
+- Platform dictionary: Tier1 triples captured in `SUPPORTED_TARGETS` with OS mapping; package allowlist overrides (`PACKAGE_PLATFORMS`) remain for OS‑only crates (e.g., `hyper-named-pipe`).
+- Cfg parsing: `cargo_platform::Platform` is matched against cached `rustc --print=cfg --target <triple>` output for supported triples. If parsing/matching yields no OS, treat dependency as universal.
+- Emission: edges carry `os_deps`/`os_named_deps` keyed by OS; unconditional deps stay in `deps`/`named_deps`. Nodes currently set `compatible_with` only from the allowlist; deriving it from cfg is a follow‑up.
+- Bundles: rust_* wrapper rules accept `os_deps` and `os_named_deps`, expanding into `select({platform: deps, "DEFAULT": base})`. Empty maps keep today’s deps.
+- Caching: cache fingerprints do **not** yet include platform model revision; needs follow‑up (or cache version bump) when platform dictionary changes.
 
 ## Risks / Trade-offs
 - Missing Buck platform definitions in host repo could break select resolution; fallback will collapse `os_deps` into normal deps when no platforms are configured.
