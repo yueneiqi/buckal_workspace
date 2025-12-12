@@ -134,6 +134,26 @@ def ensure_valid_buck2_daemon(cwd: Path, env: dict[str, str]) -> None:
         subprocess.run(["buck2", "kill"], cwd=cwd, env=env, check=False)
 
 
+def commit_and_push_fd_inplace(
+    args: argparse.Namespace, env: dict[str, str], inplace_branch: str | None
+) -> None:
+    if not args.inplace or args.no_push:
+        return
+    if not inplace_branch:
+        print("Warning: fd repo not on a created inplace branch; skipping commit/push.")
+        return
+    status = git_run(["status", "--porcelain"], cwd=SAMPLE_DIR, env=env, capture=True) or ""
+    if not status.strip():
+        print("No changes in fd repo to commit; skipping push.")
+        return
+    git_run(["add", "-A"], cwd=SAMPLE_DIR, env=env)
+    msg = f"buckal migrate update {datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    git_run(["commit", "-m", msg], cwd=SAMPLE_DIR, env=env)
+    print("Committed fd changes, pushing to origin/main...")
+    git_run(["push", "--force-with-lease", "origin", "HEAD:main"], cwd=SAMPLE_DIR, env=env)
+    print("✅ Pushed fd changes to origin/main")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -180,6 +200,11 @@ def main() -> None:
         "--inplace-branch",
         help="branch name to create when running --inplace (defaults to buckal-test-<timestamp>)",
     )
+    parser.add_argument(
+        "--no-push",
+        action="store_true",
+        help="when running --inplace, skip committing/pushing fd changes",
+    )
     args = parser.parse_args()
 
     if not CARGO_BUCKAL_MANIFEST.exists():
@@ -214,7 +239,7 @@ def main() -> None:
     if combined:
         env[ld_var] = combined
 
-    original_fd_branch, _ = ensure_fd_on_base_and_branch(args, env)
+    original_fd_branch, inplace_branch = ensure_fd_on_base_and_branch(args, env)
 
     workspace: Path
     temp_dir: Path | None = None
@@ -348,6 +373,8 @@ def main() -> None:
             ensure_valid_buck2_daemon(workspace, env)
             run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
             print("✅ Buck2 tests finished")
+
+        commit_and_push_fd_inplace(args, env, inplace_branch)
     finally:
         if temp_dir and not args.keep_temp:
             shutil.rmtree(temp_dir, ignore_errors=True)

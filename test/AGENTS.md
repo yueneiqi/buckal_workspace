@@ -1,6 +1,6 @@
 # Test Utilities
 
-- `buckal_fd_build.py`: End-to-end helper that first checks out `base` in `test/3rd/fd` (and when `--inplace`, forks a fresh branch from `base`), then copies `test/3rd/fd` to a temp dir (or `--inplace`), runs `buck2 init`, generates Buck2 files via local `cargo-buckal`, vendors local `buckal-bundles`, patches buildscript NUM_JOBS, then builds (and optionally tests) with Buck2.
+- `buckal_fd_build.py`: End-to-end helper that first checks out `base` in `test/3rd/fd` (and when `--inplace`, forks a fresh branch from `base`), then copies `test/3rd/fd` to a temp dir (or `--inplace`), runs `buck2 init`, generates Buck2 files via local `cargo-buckal`, vendors local `buckal-bundles`, patches buildscript NUM_JOBS, then builds (and optionally tests) with Buck2. In `--inplace` mode, after a successful build/test it commits all fd changes and force-with-lease pushes `HEAD:main` to trigger CI (disable with `--no-push`).
   - Default: `uv run test/buckal_fd_build.py`
   - In-place: `uv run test/buckal_fd_build.py --inplace`
   - Skip bundle fetch: `--no-fetch`

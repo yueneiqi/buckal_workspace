@@ -12,10 +12,12 @@
 - 清理加载项（可通过 `--keep-rust-test` 关闭）：如果生成的 BUCK 中包含 `rust_test` 但当前 bundle 不提供，则移除该 load 以防解析报错。
 - 构建：`buck2 build <buck2-target>`（默认 `//:fd`）。
 - 可选测试：加 `--test` 时执行 `buck2 test <buck2-test-target>`（默认 `//...`）。
+- `--inplace` 模式下构建/测试成功后，会 `git add -A && git commit` 并 `git push --force-with-lease origin HEAD:main` 触发 CI（可用 `--no-push` 关闭）。
 
 ## 主要参数
 - `--inplace`：在 `test/3rd/fd` 直接生成 / 构建（会写 BUCK 文件）。
 - `--inplace-branch`：`--inplace` 时用于创建的新分支名（默认 `buckal-test-<timestamp>`）。
+- `--no-push`：`--inplace` 时不自动 commit/push fd 变更。
 - `--keep-temp`：保留临时工作区，便于调试生成结果。
 - `--no-fetch`：跳过 `cargo buckal migrate --fetch`，使用现有 bundle。
 - `--buck2-target`：构建目标，默认 `//:fd`。
