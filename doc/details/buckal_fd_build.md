@@ -42,3 +42,7 @@ uv run test/buckal_fd_build.py --inplace --test
 # 指定构建目标，跳过 fetch
 uv run test/buckal_fd_build.py --buck2-target //:fd --no-fetch
 ```
+
+## TODO
+
+交叉编译时，是否解析了 `Cross.toml` 的信息
