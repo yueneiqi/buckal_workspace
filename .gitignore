@@ -1,3 +1,4 @@
 local_test
 .envrc
 log
+**/__pycache__
