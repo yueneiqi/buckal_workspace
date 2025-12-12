@@ -3,6 +3,7 @@
 一个端到端脚本，用本地 `cargo-buckal` + 本地 `buckal-bundles` 为 sample 工程 `test/3rd/fd` 生成 BUCK2 规则并用 Buck2 编译（可选跑测试）。方便本地验证 Buckal 产物是否可直接构建。
 
 ## 工作流程
+- 在 `test/3rd/fd` 仓库内先切到 `base` 分支（要求工作区干净）；若使用 `--inplace`，则从 `base` fork 出一个临时分支并切换过去再进行生成/构建。
 - 复制 `test/3rd/fd` 到临时目录（默认）或在原目录执行（`--inplace`）。
 - `buck2 init`：如果临时目录内没有 `.buckconfig` 则初始化。
 - 生成 BUCK：`cargo run --manifest-path cargo-buckal/Cargo.toml -- buckal migrate --buck2`，可选再 `--fetch` 更新 bundle。
@@ -14,6 +15,7 @@
 
 ## 主要参数
 - `--inplace`：在 `test/3rd/fd` 直接生成 / 构建（会写 BUCK 文件）。
+- `--inplace-branch`：`--inplace` 时用于创建的新分支名（默认 `buckal-test-<timestamp>`）。
 - `--keep-temp`：保留临时工作区，便于调试生成结果。
 - `--no-fetch`：跳过 `cargo buckal migrate --fetch`，使用现有 bundle。
 - `--buck2-target`：构建目标，默认 `//:fd`。
