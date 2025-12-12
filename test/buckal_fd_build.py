@@ -10,6 +10,7 @@ dirtying the repo. Use `--inplace` to run directly in the sample directory.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -111,6 +112,26 @@ def ensure_fd_on_base_and_branch(
         print(f"Created and switched to fd branch {inplace_branch}")
 
     return original_branch, inplace_branch
+
+
+def ensure_valid_buck2_daemon(cwd: Path, env: dict[str, str]) -> None:
+    result = subprocess.run(
+        ["buck2", "status"],
+        cwd=cwd,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        return
+    try:
+        status = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return
+    if status.get("valid_working_directory") is False or status.get("valid_buck_out_mount") is False:
+        print("Buck2 daemon reports stale working directory; restarting buckd.")
+        subprocess.run(["buck2", "kill"], cwd=cwd, env=env, check=False)
 
 
 def main() -> None:
@@ -318,11 +339,13 @@ def main() -> None:
                 buck_file.write_text("\n".join(new_lines) + "\n")
 
         # Step 2: build fd with Buck2.
+        ensure_valid_buck2_daemon(workspace, env)
         run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
         print("✅ Buck2 build finished")
 
         # Optional: run the test suite.
         if args.test:
+            ensure_valid_buck2_daemon(workspace, env)
             run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
             print("✅ Buck2 tests finished")
     finally:
