@@ -8,4 +8,5 @@
 - [ ] 1.4b Include platform model revision in cache fingerprints (or bump cache version when SUPPORTED_TARGETS/PACKAGE_PLATFORMS change).
 - [x] 1.5 Extend buckal-bundles rust_* wrapper rules to accept `os_deps` and `os_named_deps`, expanding them to `select()` with a DEFAULT branch.
 - [x] 1.6 Add sample workspace/tests (test/3rd/fd + CI harness) covering windows‑only and unix‑only deps; validate via cross‑platform build or `buck2 --target-platform`.
+- [x] 1.6b Fix cross‑compile label mismatch by switching OS labels to `prelude//os/constraints:*` in both generator and bundles.
 - [ ] 1.7 Update docs (e.g., doc/buckal_intro.md and a platform guide) and run formatting plus `openspec validate add-multi-platform-support --strict`.
