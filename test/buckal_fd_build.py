@@ -325,7 +325,7 @@ def main() -> None:
                 "[cells]",
                 "  root = .",
                 "  prelude = prelude",
-                "  toolchains = toolchains",
+                f"  toolchains = {bundle_cell_path}/config/toolchains",
                 "  none = none",
                 f"  buckal = {bundle_cell_path}",
                 "",
@@ -349,6 +349,13 @@ def main() -> None:
                     out_lines.append("")
 
             buckconfig_path.write_text("\n".join(out_lines).rstrip() + "\n")
+
+        # We use the bundled toolchains/platforms under `buckal/config/*`, so
+        # remove any `buck2 init` scaffolding to avoid confusion.
+        for dirname in ("toolchains", "platforms"):
+            path = workspace / dirname
+            if path.exists():
+                shutil.rmtree(path, ignore_errors=True)
 
         # The pinned buckal bundle may not export rust_test; drop it from the load
         # statement in the generated BUCK file to avoid parse errors.
