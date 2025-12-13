@@ -151,7 +151,7 @@ def commit_and_push_fd_inplace(
     git_run(["commit", "-m", msg], cwd=SAMPLE_DIR, env=env)
     print("Committed fd changes, pushing to origin/main...")
     git_run(["push", "--force-with-lease", "origin", "HEAD:main"], cwd=SAMPLE_DIR, env=env)
-    print("✅ Pushed fd changes to origin/main")
+    print("[ok] Pushed fd changes to origin/main")
 
 
 def main() -> None:
@@ -371,27 +371,27 @@ def main() -> None:
         # Step 2: build fd with Buck2.
         ensure_valid_buck2_daemon(workspace, env)
         run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
-        print("✅ Buck2 build finished")
+        print("[ok] Buck2 build finished")
 
         # Step 2b: optionally build fd for additional target platforms.
         if args.multi_platform:
             ensure_valid_buck2_daemon(workspace, env)
             for platform in (
-                "//platforms:x86_64-unknown-linux-gnu",
-                "//platforms:i686-unknown-linux-gnu",
+                "buckal//config/platforms:x86_64-unknown-linux-gnu",
+                "buckal//config/platforms:i686-unknown-linux-gnu",
             ):
                 run(
                     ["buck2", "build", "//:fd", "--target-platforms", platform],
                     cwd=workspace,
                     env=env,
                 )
-            print("✅ Buck2 multi-platform builds finished")
+            print("[ok] Buck2 multi-platform builds finished")
 
         # Optional: run the test suite.
         if args.test:
             ensure_valid_buck2_daemon(workspace, env)
             run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
-            print("✅ Buck2 tests finished")
+            print("[ok] Buck2 tests finished")
 
         commit_and_push_fd_inplace(args, env, inplace_branch)
     finally:
