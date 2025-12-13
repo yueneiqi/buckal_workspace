@@ -14,7 +14,12 @@ clean:
 	cargo clean --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
 
 test-fd:
-	uv run "{{root}}/test/buckal_fd_build.py" --test
+	cd "{{root}}"
+	uv run test/buckal_fd_build.py --test --keep-rust-test
+
+test-fd-release:
+	cd "{{root}}"
+	uv run test/buckal_fd_build.py --test --keep-rust-test --inplace
 
 actions-latest repo="yueneiqi/fd-test" branch="":
 	uv run "{{root}}/test/github_actions_latest.py" --repo "{{repo}}"{{ if branch != "" { " --branch " + branch } else { "" } }}
