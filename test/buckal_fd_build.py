@@ -114,6 +114,38 @@ def ensure_fd_on_base_and_branch(
     return original_branch, inplace_branch
 
 
+def parse_host(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"linux"}:
+        return "linux"
+    if normalized in {"windows", "win"}:
+        return "windows"
+    if normalized in {"macos", "darwin", "osx"}:
+        return "macos"
+    raise argparse.ArgumentTypeError(
+        f"invalid --host value: {value!r} (expected linux|macos|windows)"
+    )
+
+
+def multi_platform_targets(host: str) -> tuple[str, ...]:
+    if host == "linux":
+        return (
+            "buckal//config/platforms:x86_64-unknown-linux-gnu",
+            "buckal//config/platforms:i686-unknown-linux-gnu",
+            "buckal//config/platforms:aarch64-unknown-linux-gnu",
+        )
+    if host == "windows":
+        return (
+            "buckal//config/platforms:x86_64-pc-windows-msvc",
+            "buckal//config/platforms:i686-pc-windows-msvc",
+            "buckal//config/platforms:aarch64-pc-windows-msvc",
+            "buckal//config/platforms:x86_64-pc-windows-gnu",
+        )
+    if host == "macos":
+        return ("buckal//config/platforms:aarch64-apple-darwin",)
+    raise ValueError(f"Unexpected host: {host!r}")
+
+
 def ensure_valid_buck2_daemon(cwd: Path, env: dict[str, str]) -> None:
     result = subprocess.run(
         ["buck2", "status"],
@@ -175,6 +207,13 @@ def main() -> None:
         "--multi-platform",
         action="store_true",
         help="also build //:fd for additional target platforms",
+    )
+    parser.add_argument(
+        "--host",
+        default="linux",
+        type=parse_host,
+        choices=("linux", "macos", "windows"),
+        help="host OS group used to choose --multi-platform targets (default: linux)",
     )
     parser.add_argument(
         "--test",
@@ -383,12 +422,9 @@ def main() -> None:
         # Step 2b: optionally build fd for additional target platforms.
         if args.multi_platform:
             ensure_valid_buck2_daemon(workspace, env)
-            for platform in (
-                "buckal//config/platforms:x86_64-unknown-linux-gnu",
-                "buckal//config/platforms:i686-unknown-linux-gnu",
-            ):
+            for platform in multi_platform_targets(args.host):
                 run(
-                    ["buck2", "build", "//:fd", "--target-platforms", platform],
+                    ["buck2", "build", args.buck2_target, "--target-platforms", platform],
                     cwd=workspace,
                     env=env,
                 )
