@@ -258,11 +258,16 @@ def main() -> None:
                     log_parts.append(f"# {fname}\n{text}")
                 combined = "\n\n".join(log_parts).rstrip() + "\n"
                 out_path = log_dir / f"{safe_name(jname)}_{jid}.log"
-                out_path.write_text(combined)
+                out_path.write_text(combined, encoding="utf-8", errors="replace", newline="\n")
                 print(f"job '{jname}' failed; logs written to {out_path}")
             except Exception as exc:  # pragma: no cover - log download edge cases
                 err_path = log_dir / f"{safe_name(jname)}_{jid}.err.log"
-                err_path.write_text(f"Error fetching logs for job {jid}: {exc}\n")
+                err_path.write_text(
+                    f"Error fetching logs for job {jid}: {exc}\n",
+                    encoding="utf-8",
+                    errors="replace",
+                    newline="\n",
+                )
                 print(
                     f"Failed to fetch logs for job {jid}: {exc} (saved to {err_path})",
                     file=sys.stderr,
