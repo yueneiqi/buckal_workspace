@@ -1,27 +1,23 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+set windows-shell := ["powershell", "-NoProfile", "-Command"]
 
 default := "build"
 root := justfile_directory()
 
 build:
-	cd "{{root}}/cargo-buckal" && cargo build --locked
+	cargo build --locked --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
 
 release:
-	cd "{{root}}/cargo-buckal" && cargo build --locked --release
+	cargo build --locked --release --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
 
 clean:
-	cd "{{root}}/cargo-buckal" && cargo clean
+	cargo clean --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
 
 test-fd:
-	cd "{{root}}" && uv run test/buckal_fd_build.py --test
+	uv run "{{root}}/test/buckal_fd_build.py" --test
 
 actions-latest repo="yueneiqi/fd-test" branch="":
-	cd "{{root}}" && \
-	  if [ -n "{{branch}}" ]; then \
-	    uv run test/github_actions_latest.py --repo "{{repo}}" --branch "{{branch}}"; \
-	  else \
-	    uv run test/github_actions_latest.py --repo "{{repo}}"; \
-	  fi
+	uv run "{{root}}/test/github_actions_latest.py" --repo "{{repo}}"{{ if branch != "" { " --branch " + branch } else { "" } }}
 
 dump-log:
-	cd "{{root}}" && uv run test/github_actions_latest.py --dump-log
+	uv run "{{root}}/test/github_actions_latest.py" --dump-log
