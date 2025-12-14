@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -114,16 +115,28 @@ def ensure_fd_on_base_and_branch(
     return original_branch, inplace_branch
 
 
-def parse_host(value: str) -> str:
-    normalized = value.strip().lower()
-    if normalized in {"linux"}:
+def detect_host_os_group() -> str:
+    system = platform.system().lower()
+    if system == "linux":
         return "linux"
-    if normalized in {"windows", "win"}:
-        return "windows"
-    if normalized in {"macos", "darwin", "osx"}:
+    if system == "darwin":
         return "macos"
-    raise argparse.ArgumentTypeError(
-        f"invalid --host value: {value!r} (expected linux|macos|windows)"
+    if system == "windows":
+        return "windows"
+    if system.startswith(("cygwin", "msys", "mingw")):
+        return "windows"
+
+    sys_platform = sys.platform.lower()
+    if sys_platform.startswith("linux"):
+        return "linux"
+    if sys_platform == "darwin":
+        return "macos"
+    if sys_platform in {"win32", "cygwin", "msys"}:
+        return "windows"
+
+    raise RuntimeError(
+        "Unable to detect host OS group. "
+        f"platform.system()={platform.system()!r}, sys.platform={sys.platform!r}"
     )
 
 
@@ -207,13 +220,6 @@ def main() -> None:
         "--multi-platform",
         action="store_true",
         help="also build //:fd for additional target platforms",
-    )
-    parser.add_argument(
-        "--host",
-        default="linux",
-        type=parse_host,
-        choices=("linux", "macos", "windows"),
-        help="host OS group used to choose --multi-platform targets (default: linux)",
     )
     parser.add_argument(
         "--test",
@@ -421,8 +427,10 @@ def main() -> None:
 
         # Step 2b: optionally build fd for additional target platforms.
         if args.multi_platform:
+            host = detect_host_os_group()
+            print(f"[info] Detected host OS group: {host}")
             ensure_valid_buck2_daemon(workspace, env)
-            for platform in multi_platform_targets(args.host):
+            for platform in multi_platform_targets(host):
                 run(
                     ["buck2", "build", args.buck2_target, "--target-platforms", platform],
                     cwd=workspace,
