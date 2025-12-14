@@ -84,66 +84,41 @@ jobs:
           if-no-files-found: error
 
   push:
-    name: push (linux runner)
+    name: push (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [ build ]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            target_branch: linux-gen
+          - name: macos
+            target_branch: macos-gen
+          - name: windows
+            target_branch: windows-gen
+    env:
+      FD_TEST_DEST_USER: yueneiqi
+      FD_TEST_DEST_REPO: fd-test
+      FD_TEST_USER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+      FD_TEST_USER_NAME: github-actions[bot]
     steps:
-      - name: Download linux artifact
+      - name: Download ${{ matrix.name }} artifact
         uses: actions/download-artifact@v4
         with:
-          name: fd-tree-linux
-          path: out/linux
+          name: fd-tree-${{ matrix.name }}
+          path: out
 
-      - name: Download macos artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: fd-tree-macos
-          path: out/macos
-
-      - name: Download windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: fd-tree-windows
-          path: out/windows
-
-      - name: Push linux-gen
+      - name: Push ${{ matrix.target_branch }}
         uses: cpina/github-action-push-to-another-repository@v1.7.3
         env:
           SSH_DEPLOY_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
         with:
-          source-directory: out/linux
-          destination-github-username: yueneiqi
-          destination-repository-name: fd-test
-          user-email: 41898282+github-actions[bot]@users.noreply.github.com
-          user-name: github-actions[bot]
-          target-branch: linux-gen
-          commit-message: Update generated fd (linux) from ORIGIN_COMMIT
-          create-target-branch-if-needed: true
-
-      - name: Push macos-gen
-        uses: cpina/github-action-push-to-another-repository@v1.7.3
-        env:
-          SSH_DEPLOY_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
-        with:
-          source-directory: out/macos
-          destination-github-username: yueneiqi
-          destination-repository-name: fd-test
-          user-email: 41898282+github-actions[bot]@users.noreply.github.com
-          user-name: github-actions[bot]
-          target-branch: macos-gen
-          commit-message: Update generated fd (macos) from ORIGIN_COMMIT
-          create-target-branch-if-needed: true
-
-      - name: Push windows-gen
-        uses: cpina/github-action-push-to-another-repository@v1.7.3
-        env:
-          SSH_DEPLOY_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
-        with:
-          source-directory: out/windows
-          destination-github-username: yueneiqi
-          destination-repository-name: fd-test
-          user-email: 41898282+github-actions[bot]@users.noreply.github.com
-          user-name: github-actions[bot]
-          target-branch: windows-gen
-          commit-message: Update generated fd (windows) from ORIGIN_COMMIT
+          source-directory: out
+          destination-github-username: ${{ env.FD_TEST_DEST_USER }}
+          destination-repository-name: ${{ env.FD_TEST_DEST_REPO }}
+          user-email: ${{ env.FD_TEST_USER_EMAIL }}
+          user-name: ${{ env.FD_TEST_USER_NAME }}
+          target-branch: ${{ matrix.target_branch }}
+          commit-message: Update generated fd (${{ matrix.name }}) from ORIGIN_COMMIT
           create-target-branch-if-needed: true
