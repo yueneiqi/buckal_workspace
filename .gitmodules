@@ -7,6 +7,7 @@
 [submodule "test/3rd/fd"]
 	path = test/3rd/fd
 	url = git@github.com:yueneiqi/fd-test.git
+	branch = base
 [submodule "buck2"]
 	path = buck2
 	url = https://github.com/facebook/buck2.git

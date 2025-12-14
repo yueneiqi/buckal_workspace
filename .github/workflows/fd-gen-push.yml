@@ -1,0 +1,162 @@
+name: Generate fd BUCK and push to fd-test
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  gen-and-push:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            target_branch: linux-gen
+          - name: macos
+            os: macos-latest
+            target_branch: macos-gen
+          - name: windows
+            os: windows-latest
+            target_branch: windows-gen
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Setup Rust toolchain (for Buck2 install)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-08-01
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
+
+      - name: Install Buck2
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +nightly-2025-08-01 install --git https://github.com/facebook/buck2.git --rev c6bfcc629378a00921aa04597551442c9e2ea2eb buck2
+          buck2 --version
+
+      - name: Ensure fd submodule has base branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd test/3rd/fd
+          git fetch --prune origin "+refs/heads/*:refs/remotes/origin/*"
+          if git show-ref --verify --quiet refs/heads/base; then
+            git checkout base
+          else
+            git checkout -b base origin/base
+          fi
+
+      - name: Generate + build + test (inplace)
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run test/buckal_fd_build.py --keep-rust-test --inplace --multi-platform --test --no-push
+
+      - name: Configure SSH key for fd-test
+        shell: bash
+        env:
+          FD_TEST_SSH_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FD_TEST_SSH_KEY:-}" ]; then
+            echo "Missing secret FD_TEST_SSH_KEY"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$FD_TEST_SSH_KEY" > ~/.ssh/fd_test_deploy_key
+          chmod 600 ~/.ssh/fd_test_deploy_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Push generated fd tree to fd-test
+        env:
+          FD_TEST_DEST_REPO_SSH: git@github.com:yueneiqi/fd-test.git
+          FD_TEST_TARGET_BRANCH: ${{ matrix.target_branch }}
+          FD_TEST_SOURCE_DIR: test/3rd/fd
+          GIT_SSH_COMMAND: ssh -i ~/.ssh/fd_test_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import shutil
+          import subprocess
+          from pathlib import Path
+          
+          dest_repo_ssh = os.environ["FD_TEST_DEST_REPO_SSH"]
+          target_branch = os.environ["FD_TEST_TARGET_BRANCH"]
+          source_dir = Path(os.environ["GITHUB_WORKSPACE"]) / os.environ["FD_TEST_SOURCE_DIR"]
+          dest_dir = Path("fd-test-dest")
+          
+          if not source_dir.exists():
+            raise SystemExit(f"Source directory does not exist: {source_dir}")
+          
+          subprocess.run(["git", "clone", dest_repo_ssh, str(dest_dir)], check=True)
+          
+          subprocess.run(["git", "-C", str(dest_dir), "checkout", "-B", target_branch], check=True)
+          subprocess.run(["git", "-C", str(dest_dir), "config", "user.name", "github-actions[bot]"], check=True)
+          subprocess.run(
+            ["git", "-C", str(dest_dir), "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
+            check=True,
+          )
+          
+          # Clean destination working tree (except .git) then copy source contents in.
+          for child in dest_dir.iterdir():
+            if child.name == ".git":
+              continue
+            if child.is_dir():
+              shutil.rmtree(child)
+            else:
+              child.unlink()
+          
+          def ignore(src, names):
+            ignored = set()
+            for name in names:
+              if name == ".git" or name == ".gitmodules":
+                ignored.add(name)
+            return ignored
+          
+          for child in source_dir.iterdir():
+            if child.name in {".git", ".gitmodules"}:
+              continue
+            dest = dest_dir / child.name
+            if child.is_dir():
+              shutil.copytree(child, dest, dirs_exist_ok=True, ignore=ignore)
+            else:
+              shutil.copy2(child, dest)
+          
+          subprocess.run(["git", "-C", str(dest_dir), "add", "-A"], check=True)
+          status = subprocess.run(
+            ["git", "-C", str(dest_dir), "status", "--porcelain"],
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+          ).stdout.strip()
+          if not status:
+            print("No changes to push.")
+            raise SystemExit(0)
+          
+          subprocess.run(["git", "-C", str(dest_dir), "commit", "-m", f"Update generated fd ({target_branch})"], check=True)
+          subprocess.run(["git", "-C", str(dest_dir), "push", "--force-with-lease", "origin", f"HEAD:{target_branch}"], check=True)
+          print(f"[ok] pushed to {dest_repo_ssh}@{target_branch}")
+          PY
