@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  gen-and-push:
-    name: ${{ matrix.name }}
+  build:
+    name: build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -17,13 +17,10 @@ jobs:
         include:
           - name: linux
             os: ubuntu-latest
-            target_branch: linux-gen
           - name: macos
             os: macos-latest
-            target_branch: macos-gen
           - name: windows
             os: windows-latest
-            target_branch: windows-gen
 
     steps:
       - name: Checkout (with submodules)
@@ -73,90 +70,80 @@ jobs:
           set -euo pipefail
           uv run test/buckal_fd_build.py --keep-rust-test --inplace --multi-platform --test --no-push
 
-      - name: Configure SSH key for fd-test
+      - name: Prepare artifact (strip git metadata)
         shell: bash
-        env:
-          FD_TEST_SSH_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${FD_TEST_SSH_KEY:-}" ]; then
-            echo "Missing secret FD_TEST_SSH_KEY"
-            exit 1
-          fi
-          mkdir -p ~/.ssh
-          printf '%s\n' "$FD_TEST_SSH_KEY" > ~/.ssh/fd_test_deploy_key
-          chmod 600 ~/.ssh/fd_test_deploy_key
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          rm -f test/3rd/fd/.git test/3rd/fd/.gitmodules || true
 
-      - name: Push generated fd tree to fd-test
+      - name: Upload generated fd tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: fd-tree-${{ matrix.name }}
+          path: test/3rd/fd
+          if-no-files-found: error
+
+  push:
+    name: push (linux runner)
+    runs-on: ubuntu-latest
+    needs: [ build ]
+    steps:
+      - name: Download linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fd-tree-linux
+          path: out/linux
+
+      - name: Download macos artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fd-tree-macos
+          path: out/macos
+
+      - name: Download windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fd-tree-windows
+          path: out/windows
+
+      - name: Push linux-gen
+        uses: cpina/github-action-push-to-another-repository@v1.7.3
         env:
-          FD_TEST_DEST_REPO_SSH: git@github.com:yueneiqi/fd-test.git
-          FD_TEST_TARGET_BRANCH: ${{ matrix.target_branch }}
-          FD_TEST_SOURCE_DIR: test/3rd/fd
-          GIT_SSH_COMMAND: ssh -i ~/.ssh/fd_test_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os
-          import shutil
-          import subprocess
-          from pathlib import Path
-          
-          dest_repo_ssh = os.environ["FD_TEST_DEST_REPO_SSH"]
-          target_branch = os.environ["FD_TEST_TARGET_BRANCH"]
-          source_dir = Path(os.environ["GITHUB_WORKSPACE"]) / os.environ["FD_TEST_SOURCE_DIR"]
-          dest_dir = Path("fd-test-dest")
-          
-          if not source_dir.exists():
-            raise SystemExit(f"Source directory does not exist: {source_dir}")
-          
-          subprocess.run(["git", "clone", dest_repo_ssh, str(dest_dir)], check=True)
-          
-          subprocess.run(["git", "-C", str(dest_dir), "checkout", "-B", target_branch], check=True)
-          subprocess.run(["git", "-C", str(dest_dir), "config", "user.name", "github-actions[bot]"], check=True)
-          subprocess.run(
-            ["git", "-C", str(dest_dir), "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
-            check=True,
-          )
-          
-          # Clean destination working tree (except .git) then copy source contents in.
-          for child in dest_dir.iterdir():
-            if child.name == ".git":
-              continue
-            if child.is_dir():
-              shutil.rmtree(child)
-            else:
-              child.unlink()
-          
-          def ignore(src, names):
-            ignored = set()
-            for name in names:
-              if name == ".git" or name == ".gitmodules":
-                ignored.add(name)
-            return ignored
-          
-          for child in source_dir.iterdir():
-            if child.name in {".git", ".gitmodules"}:
-              continue
-            dest = dest_dir / child.name
-            if child.is_dir():
-              shutil.copytree(child, dest, dirs_exist_ok=True, ignore=ignore)
-            else:
-              shutil.copy2(child, dest)
-          
-          subprocess.run(["git", "-C", str(dest_dir), "add", "-A"], check=True)
-          status = subprocess.run(
-            ["git", "-C", str(dest_dir), "status", "--porcelain"],
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-          ).stdout.strip()
-          if not status:
-            print("No changes to push.")
-            raise SystemExit(0)
-          
-          subprocess.run(["git", "-C", str(dest_dir), "commit", "-m", f"Update generated fd ({target_branch})"], check=True)
-          subprocess.run(["git", "-C", str(dest_dir), "push", "--force-with-lease", "origin", f"HEAD:{target_branch}"], check=True)
-          print(f"[ok] pushed to {dest_repo_ssh}@{target_branch}")
-          PY
+          SSH_DEPLOY_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
+        with:
+          source-directory: out/linux
+          destination-github-username: yueneiqi
+          destination-repository-name: fd-test
+          user-email: 41898282+github-actions[bot]@users.noreply.github.com
+          user-name: github-actions[bot]
+          target-branch: linux-gen
+          commit-message: Update generated fd (linux) from ORIGIN_COMMIT
+          create-target-branch-if-needed: true
+
+      - name: Push macos-gen
+        uses: cpina/github-action-push-to-another-repository@v1.7.3
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
+        with:
+          source-directory: out/macos
+          destination-github-username: yueneiqi
+          destination-repository-name: fd-test
+          user-email: 41898282+github-actions[bot]@users.noreply.github.com
+          user-name: github-actions[bot]
+          target-branch: macos-gen
+          commit-message: Update generated fd (macos) from ORIGIN_COMMIT
+          create-target-branch-if-needed: true
+
+      - name: Push windows-gen
+        uses: cpina/github-action-push-to-another-repository@v1.7.3
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
+        with:
+          source-directory: out/windows
+          destination-github-username: yueneiqi
+          destination-repository-name: fd-test
+          user-email: 41898282+github-actions[bot]@users.noreply.github.com
+          user-name: github-actions[bot]
+          target-branch: windows-gen
+          commit-message: Update generated fd (windows) from ORIGIN_COMMIT
+          create-target-branch-if-needed: true
