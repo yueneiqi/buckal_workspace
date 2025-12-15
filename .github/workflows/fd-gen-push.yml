@@ -112,6 +112,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          uv run test/buckal_fd_build.py --keep-rust-test --test
           uv run test/buckal_fd_build.py --keep-rust-test --inplace --no-push --skip-build
 
       - name: Upload generated fd tree
