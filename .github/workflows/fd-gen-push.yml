@@ -116,11 +116,12 @@ jobs:
           uv run test/buckal_fd_build.py --keep-rust-test --inplace --no-push --skip-build
 
       - name: Upload generated fd tree
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: fd-tree-${{ matrix.name }}
           path: test/3rd/fd
           if-no-files-found: error
+          include-hidden-files: true
 
   push:
     name: push (${{ matrix.name }})
