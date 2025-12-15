@@ -53,6 +53,11 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Install Linux toolchain deps
+        if: runner.os == 'Linux'
+        shell: bash
+        run: sudo apt-get -y update && sudo apt-get -y install gcc-i686-linux-gnu g++-i686-linux-gnu
+
       - name: Install required Rust toolchains/targets
         shell: bash
         run: |
