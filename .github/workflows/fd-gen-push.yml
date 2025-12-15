@@ -53,10 +53,21 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install Linux toolchain deps
-        if: runner.os == 'Linux'
-        shell: bash
-        run: sudo apt-get -y update && sudo apt-get -y install gcc-i686-linux-gnu g++-i686-linux-gnu
+      - name: Install Windows toolchain deps
+        if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+
+      - name: Add MinGW to PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "${{ steps.msys2.outputs.msys2-location }}\\mingw64\\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install required Rust toolchains/targets
         shell: bash
@@ -64,15 +75,12 @@ jobs:
           set -euo pipefail
           rustup toolchain install nightly-2025-08-01 -c rust-src -c llvm-tools-preview
           case "${RUNNER_OS}" in
-            Linux)
-              rustup target add --toolchain stable aarch64-unknown-linux-gnu i686-unknown-linux-gnu
-              ;;
             macOS)
               rustup target add --toolchain stable aarch64-apple-darwin
               ;;
             Windows)
               rustup toolchain install stable-x86_64-pc-windows-gnu
-              rustup target add --toolchain stable i686-pc-windows-msvc aarch64-pc-windows-msvc x86_64-pc-windows-gnu
+              rustup target add --toolchain stable x86_64-pc-windows-gnu
               ;;
           esac
 
@@ -104,7 +112,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run test/buckal_fd_build.py --keep-rust-test --inplace --multi-platform --test --no-push
+          uv run test/buckal_fd_build.py --keep-rust-test --inplace --test --no-push
 
       - name: Prepare artifact (strip git metadata)
         shell: bash
