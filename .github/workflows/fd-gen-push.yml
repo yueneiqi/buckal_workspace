@@ -37,7 +37,7 @@ jobs:
             | Out-Null
 
       - name: Checkout (with submodules)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 0
@@ -113,12 +113,6 @@ jobs:
         run: |
           set -euo pipefail
           uv run test/buckal_fd_build.py --keep-rust-test --inplace --test --no-push
-
-      - name: Prepare artifact (strip git metadata)
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f test/3rd/fd/.git test/3rd/fd/.gitmodules || true
 
       - name: Upload generated fd tree
         uses: actions/upload-artifact@v4
