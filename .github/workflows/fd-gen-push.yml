@@ -147,16 +147,42 @@ jobs:
           name: fd-tree-${{ matrix.name }}
           path: out
 
-      - name: Push ${{ matrix.target_branch }}
-        uses: cpina/github-action-push-to-another-repository@v1.7.3
-        env:
-          SSH_DEPLOY_KEY: ${{ secrets.FD_TEST_SSH_KEY }}
-        with:
-          source-directory: out
-          destination-github-username: ${{ env.FD_TEST_DEST_USER }}
-          destination-repository-name: ${{ env.FD_TEST_DEST_REPO }}
-          user-email: ${{ env.FD_TEST_USER_EMAIL }}
-          user-name: ${{ env.FD_TEST_USER_NAME }}
-          target-branch: ${{ matrix.target_branch }}
-          commit-message: Update generated fd (${{ matrix.name }}) from ORIGIN_COMMIT
-          create-target-branch-if-needed: true
+      - name: Configure git + SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.email "${FD_TEST_USER_EMAIL}"
+          git config --global user.name "${FD_TEST_USER_NAME}"
+
+          mkdir -p "${HOME}/.ssh"
+          install -m 0600 /dev/null "${HOME}/.ssh/deploy_key"
+          printf '%s\n' "${{ secrets.FD_TEST_SSH_KEY }}" > "${HOME}/.ssh/deploy_key"
+          ssh-keyscan -H github.com >> "${HOME}/.ssh/known_hosts"
+          printf '%s\n' "Host github.com" >> "${HOME}/.ssh/config"
+          printf '%s\n' "  IdentityFile ${HOME}/.ssh/deploy_key" >> "${HOME}/.ssh/config"
+          printf '%s\n' "  IdentitiesOnly yes" >> "${HOME}/.ssh/config"
+
+      - name: Force-push ${{ matrix.target_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          remote="git@github.com:${FD_TEST_DEST_USER}/${FD_TEST_DEST_REPO}.git"
+          workdir="$(mktemp -d)"
+          origin_commit="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+
+          if git clone --single-branch --depth 1 --branch "${{ matrix.target_branch }}" "${remote}" "${workdir}"; then
+            :
+          else
+            git clone --single-branch --depth 1 "${remote}" "${workdir}"
+            git -C "${workdir}" checkout -b "${{ matrix.target_branch }}"
+          fi
+
+          rsync -a --delete out/ "${workdir}/"
+
+          git -C "${workdir}" add -A
+          if ! git -C "${workdir}" diff --cached --quiet; then
+            git -C "${workdir}" commit -m "Update generated fd (${{ matrix.name }}) from ${origin_commit}"
+          fi
+
+          git -C "${workdir}" push --force origin "HEAD:${{ matrix.target_branch }}"
