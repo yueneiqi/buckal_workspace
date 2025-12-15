@@ -112,7 +112,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run test/buckal_fd_build.py --keep-rust-test --inplace --test --no-push
+          uv run test/buckal_fd_build.py --keep-rust-test --inplace --no-push --skip-build
 
       - name: Upload generated fd tree
         uses: actions/upload-artifact@v4
@@ -178,7 +178,7 @@ jobs:
             git -C "${workdir}" checkout -b "${{ matrix.target_branch }}"
           fi
 
-          rsync -a --delete out/ "${workdir}/"
+          rsync -a --delete --exclude '.git' out/ "${workdir}/"
 
           git -C "${workdir}" add -A
           if ! git -C "${workdir}" diff --cached --quiet; then

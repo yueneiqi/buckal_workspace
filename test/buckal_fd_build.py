@@ -217,6 +217,11 @@ def main() -> None:
         help="Buck2 target to build (default: //:fd)",
     )
     parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="only generate Buck2 files; skip buck2 build/test steps",
+    )
+    parser.add_argument(
         "--multi-platform",
         action="store_true",
         help="also build //:fd for additional target platforms",
@@ -261,6 +266,9 @@ def main() -> None:
         sys.exit(f"Missing cargo-buckal manifest at {CARGO_BUCKAL_MANIFEST}")
     if not SAMPLE_DIR.exists():
         sys.exit(f"Missing sample workspace at {SAMPLE_DIR}")
+
+    if args.skip_build and (args.multi_platform or args.test):
+        sys.exit("--skip-build is incompatible with --multi-platform/--test")
 
     ensure_tool("cargo")
     ensure_tool("buck2")
@@ -420,29 +428,30 @@ def main() -> None:
             if modified:
                 buck_file.write_text("\n".join(new_lines) + "\n")
 
-        # Step 2: build fd with Buck2.
-        ensure_valid_buck2_daemon(workspace, env)
-        run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
-        print("[ok] Buck2 build finished")
-
-        # Step 2b: optionally build fd for additional target platforms.
-        if args.multi_platform:
-            host = detect_host_os_group()
-            print(f"[info] Detected host OS group: {host}")
+        if not args.skip_build:
+            # Step 2: build fd with Buck2.
             ensure_valid_buck2_daemon(workspace, env)
-            for platform in multi_platform_targets(host):
-                run(
-                    ["buck2", "build", args.buck2_target, "--target-platforms", platform],
-                    cwd=workspace,
-                    env=env,
-                )
-            print("[ok] Buck2 multi-platform builds finished")
+            run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
+            print("[ok] Buck2 build finished")
 
-        # Optional: run the test suite.
-        if args.test:
-            ensure_valid_buck2_daemon(workspace, env)
-            run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
-            print("[ok] Buck2 tests finished")
+            # Step 2b: optionally build fd for additional target platforms.
+            if args.multi_platform:
+                host = detect_host_os_group()
+                print(f"[info] Detected host OS group: {host}")
+                ensure_valid_buck2_daemon(workspace, env)
+                for platform in multi_platform_targets(host):
+                    run(
+                        ["buck2", "build", args.buck2_target, "--target-platforms", platform],
+                        cwd=workspace,
+                        env=env,
+                    )
+                print("[ok] Buck2 multi-platform builds finished")
+
+            # Optional: run the test suite.
+            if args.test:
+                ensure_valid_buck2_daemon(workspace, env)
+                run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
+                print("[ok] Buck2 tests finished")
 
         commit_and_push_fd_inplace(args, env, inplace_branch)
     finally:
