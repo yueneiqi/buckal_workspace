@@ -304,6 +304,11 @@ def main() -> None:
         action="store_true",
         help="when running --inplace, skip committing/pushing changes",
     )
+    parser.add_argument(
+        "--origin",
+        action="store_true",
+        help="use installed cargo-buckal instead of local dev version and skip local bundle copy",
+    )
     args = parser.parse_args()
 
     # Set default buck2 target based on test target if not specified
@@ -368,24 +373,29 @@ def main() -> None:
             run(["buck2", "init"], cwd=workspace, env=env)
 
         # Step 1: generate Buck2 files via cargo-buckal (initializes Buck2 if needed).
-        migrate_cmd = [
-            "cargo",
-            "run",
-            "--quiet",
-            "--manifest-path",
-            str(CARGO_BUCKAL_MANIFEST),
-            "--",
-            "buckal",
-            "migrate",
-            "--buck2",
-        ]
+        if args.origin:
+            migrate_cmd = ["cargo", "buckal", "migrate", "--buck2"]
+        else:
+            migrate_cmd = [
+                "cargo",
+                "run",
+                "--quiet",
+                "--manifest-path",
+                str(CARGO_BUCKAL_MANIFEST),
+                "--",
+                "buckal",
+                "migrate",
+                "--buck2",
+            ]
         if args.supported_platform_only:
             migrate_cmd.append("--supported-platform-only")
         run(migrate_cmd, cwd=workspace, env=env)
 
         if not args.no_fetch:
-            run(
-                [
+            if args.origin:
+                fetch_cmd = ["cargo", "buckal", "migrate", "--fetch"]
+            else:
+                fetch_cmd = [
                     "cargo",
                     "run",
                     "--quiet",
@@ -395,25 +405,25 @@ def main() -> None:
                     "buckal",
                     "migrate",
                     "--fetch",
-                ],
-                cwd=workspace,
-                env=env,
-            )
+                ]
+            run(fetch_cmd, cwd=workspace, env=env)
 
         # Point the buckal cell to local bundled rules (vendored into the workspace)
         # to ensure os_deps/rust_test support.
-        bundle_src = (REPO_ROOT / "buckal-bundles").resolve()
-        bundle_dst = workspace / "buckal"
-        if bundle_dst.exists():
-            shutil.rmtree(bundle_dst)
-        shutil.copytree(bundle_src, bundle_dst)
-        buildscript_bzl = bundle_dst / "cargo_buildscript.bzl"
-        if buildscript_bzl.exists() and not args.no_patch_num_jobs:
-            content = buildscript_bzl.read_text()
-            marker = 'env["RUST_BACKTRACE"] = "1"\n'
-            if marker in content and "NUM_JOBS" not in content:
-                content = content.replace(marker, marker + '    env["NUM_JOBS"] = "1"\n')
-                buildscript_bzl.write_text(content)
+        # Skip when --origin is set (use fetched bundles instead).
+        if not args.origin:
+            bundle_src = (REPO_ROOT / "buckal-bundles").resolve()
+            bundle_dst = workspace / "buckal"
+            if bundle_dst.exists():
+                shutil.rmtree(bundle_dst)
+            shutil.copytree(bundle_src, bundle_dst)
+            buildscript_bzl = bundle_dst / "cargo_buildscript.bzl"
+            if buildscript_bzl.exists() and not args.no_patch_num_jobs:
+                content = buildscript_bzl.read_text()
+                marker = 'env["RUST_BACKTRACE"] = "1"\n'
+                if marker in content and "NUM_JOBS" not in content:
+                    content = content.replace(marker, marker + '    env["NUM_JOBS"] = "1"\n')
+                    buildscript_bzl.write_text(content)
         bundle_cell_path = "buckal"
         if buckconfig_path.exists():
             sections: dict[str, list[str]] = {}
