@@ -14,3 +14,6 @@
 [submodule "test/rust_test_workspace"]
 	path = test/rust_test_workspace
 	url = git@github.com:yueneiqi/rust_test_workspace.git
+[submodule "test/first-party-demo"]
+	path = test/first-party-demo
+	url = git@github.com:yueneiqi/first-party-demo.git
