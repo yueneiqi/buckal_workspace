@@ -252,6 +252,11 @@ def main() -> None:
         help="skip fetching latest buckal bundles (defaults to fetching)",
     )
     parser.add_argument(
+        "--supported-platform-only",
+        action="store_true",
+        help="only generate BUCK files for supported platforms",
+    )
+    parser.add_argument(
         "--inplace-branch",
         help="branch name to create when running --inplace (defaults to buckal-test-<timestamp>)",
     )
@@ -329,6 +334,8 @@ def main() -> None:
             "migrate",
             "--buck2",
         ]
+        if args.supported_platform_only:
+            migrate_cmd.append("--supported-platform-only")
         run(migrate_cmd, cwd=workspace, env=env)
 
         if not args.no_fetch:
