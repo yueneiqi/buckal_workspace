@@ -11,3 +11,6 @@
 [submodule "buck2"]
 	path = buck2
 	url = https://github.com/facebook/buck2.git
+[submodule "test/rust_test_workspace"]
+	path = test/rust_test_workspace
+	url = git@github.com:yueneiqi/rust_test_workspace.git
