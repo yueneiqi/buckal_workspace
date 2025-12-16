@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CARGO_BUCKAL_MANIFEST = SCRIPT_DIR / "cargo-buckal" / "Cargo.toml"
+CARGO_BUCKAL_MANIFEST = SCRIPT_DIR / ".." / "cargo-buckal" / "Cargo.toml"
 
 
 def main() -> int:

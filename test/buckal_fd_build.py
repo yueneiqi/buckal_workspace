@@ -3,9 +3,10 @@
 Generate Buck2 build files for Rust test projects with cargo-buckal and
 build the binaries using Buck2.
 
-Supports two test targets:
+Supports three test targets:
 1. fd project (original functionality) - use --target=fd
-2. rust_test_workspace (new comprehensive test) - use --target=rust_test_workspace
+2. rust_test_workspace (comprehensive test) - use --target=rust_test_workspace
+3. first_party_demo (first-party demo project) - use --target=first_party_demo
 
 By default the script copies the sample project to a temporary directory to avoid
 dirtying the repo. Use `--inplace` to run directly in the sample directory.
@@ -29,6 +30,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FD_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "fd"
 RUST_TEST_WORKSPACE_DIR = REPO_ROOT / "test" / "rust_test_workspace"
+FIRST_PARTY_DEMO_DIR = REPO_ROOT / "test" / "first-party-demo"
 CARGO_BUCKAL_MANIFEST = REPO_ROOT / "cargo-buckal" / "Cargo.toml"
 
 
@@ -219,8 +221,10 @@ def get_sample_dir(args: argparse.Namespace) -> Path:
         return FD_SAMPLE_DIR
     elif args.target == "rust_test_workspace":
         return RUST_TEST_WORKSPACE_DIR
+    elif args.target == "first_party_demo":
+        return FIRST_PARTY_DEMO_DIR
     else:
-        sys.exit(f"Unknown target: {args.target}. Use 'fd' or 'rust_test_workspace'.")
+        sys.exit(f"Unknown target: {args.target}. Use 'fd', 'rust_test_workspace', or 'first_party_demo'.")
 
 
 def get_default_buck2_target(args: argparse.Namespace) -> str:
@@ -229,6 +233,8 @@ def get_default_buck2_target(args: argparse.Namespace) -> str:
         return "//:fd"
     elif args.target == "rust_test_workspace":
         return "//apps/demo:demo"
+    elif args.target == "first_party_demo":
+        return "//:demo-root"
     else:
         return "//..."  # Fallback
 
@@ -237,7 +243,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--target",
-        choices=["fd", "rust_test_workspace"],
+        choices=["fd", "rust_test_workspace", "first_party_demo"],
         default="fd",
         help="Test target to use (default: fd)",
     )
