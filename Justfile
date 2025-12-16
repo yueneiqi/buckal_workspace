@@ -21,6 +21,11 @@ test-fd-release:
 	cd "{{root}}"
 	uv run test/buckal_fd_build.py --test --keep-rust-test --inplace
 
+test-full:
+	cd "{{root}}"
+	uv run test/buckal_fd_build.py --test --keep-rust-test --multi-platform
+	uv run test/buckal_fd_build.py --test --keep-rust-test --multi-platform --supported-platform-only 
+
 actions-latest repo="yueneiqi/fd-test" branch="":
 	uv run "{{root}}/test/github_actions_latest.py" --repo "{{repo}}"{{ if branch != "" { " --branch " + branch } else { "" } }}
 
