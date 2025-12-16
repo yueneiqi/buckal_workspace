@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate Buck2 build files for the sample fd project with cargo-buckal and
-build the fd binary using Buck2.
+Generate Buck2 build files for Rust test projects with cargo-buckal and
+build the binaries using Buck2.
 
-By default the script copies `test/3rd/fd` to a temporary directory to avoid
+Supports two test targets:
+1. fd project (original functionality) - use --target=fd
+2. rust_test_workspace (new comprehensive test) - use --target=rust_test_workspace
+
+By default the script copies the sample project to a temporary directory to avoid
 dirtying the repo. Use `--inplace` to run directly in the sample directory.
 """
 
@@ -23,7 +27,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "fd"
+FD_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "fd"
+RUST_TEST_WORKSPACE_DIR = REPO_ROOT / "test" / "rust_test_workspace"
 CARGO_BUCKAL_MANIFEST = REPO_ROOT / "cargo-buckal" / "Cargo.toml"
 
 
@@ -55,31 +60,36 @@ def git_run(cmd: list[str], cwd: Path, env: dict[str, str], capture: bool = Fals
     return None
 
 
-def ensure_fd_on_base_and_branch(
-    args: argparse.Namespace, env: dict[str, str]
+def ensure_on_base_and_branch(
+    args: argparse.Namespace, env: dict[str, str], sample_dir: Path
 ) -> tuple[str | None, str | None]:
-    """Ensure fd sample repo is on base branch.
-
+    """Ensure sample repo is on base branch.
+    
     For --inplace runs, create and switch to a fresh branch from base.
     Returns (original_branch, inplace_branch).
     """
+    # Only perform git operations for fd project (which is a git repo)
+    if args.target != "fd":
+        print(f"Skipping git operations for {args.target} (not a git repository)")
+        return None, None
+        
     try:
-        git_run(["rev-parse", "--is-inside-work-tree"], cwd=SAMPLE_DIR, env=env)
+        git_run(["rev-parse", "--is-inside-work-tree"], cwd=sample_dir, env=env)
     except subprocess.CalledProcessError:
-        print(f"Warning: {SAMPLE_DIR} is not a git repository; skipping base checkout.")
+        print(f"Warning: {sample_dir} is not a git repository; skipping base checkout.")
         return None, None
 
-    status = git_run(["status", "--porcelain"], cwd=SAMPLE_DIR, env=env, capture=True) or ""
+    status = git_run(["status", "--porcelain"], cwd=sample_dir, env=env, capture=True) or ""
     if status.strip():
         sys.exit(
-            f"fd repo at {SAMPLE_DIR} has uncommitted changes; please commit/stash before running."
+            f"Repo at {sample_dir} has uncommitted changes; please commit/stash before running."
         )
 
     original_branch = git_run(
-        ["rev-parse", "--abbrev-ref", "HEAD"], cwd=SAMPLE_DIR, env=env, capture=True
+        ["rev-parse", "--abbrev-ref", "HEAD"], cwd=sample_dir, env=env, capture=True
     )
     if original_branch != "base":
-        git_run(["checkout", "base"], cwd=SAMPLE_DIR, env=env)
+        git_run(["checkout", "base"], cwd=sample_dir, env=env)
 
     inplace_branch = None
     if args.inplace:
@@ -87,12 +97,12 @@ def ensure_fd_on_base_and_branch(
             inplace_branch = args.inplace_branch
             exists_rc = subprocess.run(
                 ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{inplace_branch}"],
-                cwd=SAMPLE_DIR,
+                cwd=sample_dir,
                 env=env,
             ).returncode
             if exists_rc == 0:
                 sys.exit(
-                    f"In-place branch '{inplace_branch}' already exists in fd repo; choose another name."
+                    f"In-place branch '{inplace_branch}' already exists in repo; choose another name."
                 )
         else:
             base_name = f"buckal-test-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -101,7 +111,7 @@ def ensure_fd_on_base_and_branch(
             while (
                 subprocess.run(
                     ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{inplace_branch}"],
-                    cwd=SAMPLE_DIR,
+                    cwd=sample_dir,
                     env=env,
                 ).returncode
                 == 0
@@ -109,8 +119,8 @@ def ensure_fd_on_base_and_branch(
                 inplace_branch = f"{base_name}-{suffix}"
                 suffix += 1
 
-        git_run(["checkout", "-b", inplace_branch], cwd=SAMPLE_DIR, env=env)
-        print(f"Created and switched to fd branch {inplace_branch}")
+        git_run(["checkout", "-b", inplace_branch], cwd=sample_dir, env=env)
+        print(f"Created and switched to branch {inplace_branch}")
 
     return original_branch, inplace_branch
 
@@ -179,32 +189,62 @@ def ensure_valid_buck2_daemon(cwd: Path, env: dict[str, str]) -> None:
         subprocess.run(["buck2", "kill"], cwd=cwd, env=env, check=False)
 
 
-def commit_and_push_fd_inplace(
-    args: argparse.Namespace, env: dict[str, str], inplace_branch: str | None
+def commit_and_push_inplace(
+    args: argparse.Namespace, env: dict[str, str], sample_dir: Path, inplace_branch: str | None
 ) -> None:
+    # Only perform git operations for fd project
+    if args.target != "fd":
+        return
+        
     if not args.inplace or args.no_push:
         return
     if not inplace_branch:
-        print("Warning: fd repo not on a created inplace branch; skipping commit/push.")
+        print(f"Warning: repo not on a created inplace branch; skipping commit/push.")
         return
-    status = git_run(["status", "--porcelain"], cwd=SAMPLE_DIR, env=env, capture=True) or ""
+    status = git_run(["status", "--porcelain"], cwd=sample_dir, env=env, capture=True) or ""
     if not status.strip():
-        print("No changes in fd repo to commit; skipping push.")
+        print("No changes in repo to commit; skipping push.")
         return
-    git_run(["add", "-A"], cwd=SAMPLE_DIR, env=env)
+    git_run(["add", "-A"], cwd=sample_dir, env=env)
     msg = f"buckal migrate update {datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    git_run(["commit", "-m", msg], cwd=SAMPLE_DIR, env=env)
-    print("Committed fd changes, pushing to origin/main...")
-    git_run(["push", "--force-with-lease", "origin", "HEAD:main"], cwd=SAMPLE_DIR, env=env)
-    print("[ok] Pushed fd changes to origin/main")
+    git_run(["commit", "-m", msg], cwd=sample_dir, env=env)
+    print("Committed changes, pushing to origin/main...")
+    git_run(["push", "--force-with-lease", "origin", "HEAD:main"], cwd=sample_dir, env=env)
+    print("[ok] Pushed changes to origin/main")
+
+
+def get_sample_dir(args: argparse.Namespace) -> Path:
+    """Get the sample directory based on the target argument."""
+    if args.target == "fd":
+        return FD_SAMPLE_DIR
+    elif args.target == "rust_test_workspace":
+        return RUST_TEST_WORKSPACE_DIR
+    else:
+        sys.exit(f"Unknown target: {args.target}. Use 'fd' or 'rust_test_workspace'.")
+
+
+def get_default_buck2_target(args: argparse.Namespace) -> str:
+    """Get the default Buck2 target based on the test target."""
+    if args.target == "fd":
+        return "//:fd"
+    elif args.target == "rust_test_workspace":
+        return "//apps/demo:demo"
+    else:
+        return "//..."  # Fallback
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--target",
+        choices=["fd", "rust_test_workspace"],
+        default="fd",
+        help="Test target to use (default: fd)",
+    )
+    parser.add_argument(
         "--inplace",
         action="store_true",
-        help="run directly in test/3rd/fd instead of copying to a temp dir",
+        help="run directly in the sample directory instead of copying to a temp dir",
     )
     parser.add_argument(
         "--keep-temp",
@@ -213,8 +253,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--buck2-target",
-        default="//:fd",
-        help="Buck2 target to build (default: //:fd)",
+        help="Buck2 target to build (default: depends on target)",
     )
     parser.add_argument(
         "--skip-build",
@@ -224,7 +263,7 @@ def main() -> None:
     parser.add_argument(
         "--multi-platform",
         action="store_true",
-        help="also build //:fd for additional target platforms",
+        help="also build for additional target platforms",
     )
     parser.add_argument(
         "--test",
@@ -263,14 +302,20 @@ def main() -> None:
     parser.add_argument(
         "--no-push",
         action="store_true",
-        help="when running --inplace, skip committing/pushing fd changes",
+        help="when running --inplace, skip committing/pushing changes",
     )
     args = parser.parse_args()
 
+    # Set default buck2 target based on test target if not specified
+    if args.buck2_target is None:
+        args.buck2_target = get_default_buck2_target(args)
+
+    sample_dir = get_sample_dir(args)
+    
     if not CARGO_BUCKAL_MANIFEST.exists():
         sys.exit(f"Missing cargo-buckal manifest at {CARGO_BUCKAL_MANIFEST}")
-    if not SAMPLE_DIR.exists():
-        sys.exit(f"Missing sample workspace at {SAMPLE_DIR}")
+    if not sample_dir.exists():
+        sys.exit(f"Missing sample workspace at {sample_dir}")
 
     if args.skip_build and (args.multi_platform or args.test):
         sys.exit("--skip-build is incompatible with --multi-platform/--test")
@@ -302,20 +347,20 @@ def main() -> None:
     if combined:
         env[ld_var] = combined
 
-    original_fd_branch, inplace_branch = ensure_fd_on_base_and_branch(args, env)
+    original_branch, inplace_branch = ensure_on_base_and_branch(args, env, sample_dir)
 
     workspace: Path
     temp_dir: Path | None = None
     if args.inplace:
-        workspace = SAMPLE_DIR
+        workspace = sample_dir
         print(f"Running in-place in {workspace}")
     else:
-        temp_dir = Path(tempfile.mkdtemp(prefix="buckal-fd-"))
-        workspace = temp_dir / "fd"
-        shutil.copytree(SAMPLE_DIR, workspace)
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"buckal-{args.target}-"))
+        workspace = temp_dir / args.target
+        shutil.copytree(sample_dir, workspace)
         print(f"Copied sample workspace to {workspace}")
-        if original_fd_branch and original_fd_branch != "base":
-            git_run(["checkout", original_fd_branch], cwd=SAMPLE_DIR, env=env)
+        if original_branch and original_branch != "base":
+            git_run(["checkout", original_branch], cwd=sample_dir, env=env)
 
     try:
         buckconfig_path = workspace / ".buckconfig"
@@ -436,12 +481,12 @@ def main() -> None:
                 buck_file.write_text("\n".join(new_lines) + "\n")
 
         if not args.skip_build:
-            # Step 2: build fd with Buck2.
+            # Step 2: build with Buck2.
             ensure_valid_buck2_daemon(workspace, env)
             run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
             print("[ok] Buck2 build finished")
 
-            # Step 2b: optionally build fd for additional target platforms.
+            # Step 2b: optionally build for additional target platforms.
             if args.multi_platform:
                 host = detect_host_os_group()
                 print(f"[info] Detected host OS group: {host}")
@@ -460,7 +505,7 @@ def main() -> None:
                 run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
                 print("[ok] Buck2 tests finished")
 
-        commit_and_push_fd_inplace(args, env, inplace_branch)
+        commit_and_push_inplace(args, env, sample_dir, inplace_branch)
     finally:
         if temp_dir and not args.keep_temp:
             shutil.rmtree(temp_dir, ignore_errors=True)
