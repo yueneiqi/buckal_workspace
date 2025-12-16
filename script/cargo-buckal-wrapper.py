@@ -8,6 +8,7 @@ import os
 import sys
 import sysconfig
 import subprocess
+import argparse
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -15,6 +16,12 @@ CARGO_BUCKAL_MANIFEST = SCRIPT_DIR / ".." / "cargo-buckal" / "Cargo.toml"
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Run cargo-buckal with proper Python library paths")
+    parser.add_argument("--origin", action="store_true",
+                       help="Use installed cargo buckal instead of building from source")
+    parser.add_argument("buckal_args", nargs="*", help="Arguments to pass to buckal")
+    args = parser.parse_args()
+
     env = os.environ.copy()
 
     # Set PYO3_PYTHON to current interpreter
@@ -45,11 +52,16 @@ def main() -> int:
         env[ld_var] = combined
 
     # Build the command: cargo run ... -- buckal <user_args>
-    cmd = [
-        "cargo", "run", "--quiet",
-        "--manifest-path", str(CARGO_BUCKAL_MANIFEST),
-        "--", "buckal",
-    ] + sys.argv[1:]
+    if args.origin:
+        # Use installed cargo buckal
+        cmd = ["cargo", "buckal"] + args.buckal_args
+    else:
+        # Build from source
+        cmd = [
+            "cargo", "run", "--quiet",
+            "--manifest-path", str(CARGO_BUCKAL_MANIFEST),
+            "--", "buckal",
+        ] + args.buckal_args
 
     print(f"+ {' '.join(cmd)}")
     return subprocess.run(cmd, env=env).returncode
