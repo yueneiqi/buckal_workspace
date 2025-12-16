@@ -48,7 +48,7 @@ uv run test/buckal_fd_build.py --target=rust_test_workspace
 uv run test/buckal_fd_build.py --target=rust_test_workspace --inplace
 
 # Build server application
-uv run test/buckal_fd_build.py --target=rust_test_workspace --buck2-target="//apps/server:server"
+uv run test/buckal_fd_build.py --target=rust_test_workspace --buck2-target="//apps/demo:demo"
 
 # Run all tests
 uv run test/buckal_fd_build.py --target=rust_test_workspace --test --buck2-test-target="//..."
@@ -101,12 +101,9 @@ rust_test_workspace/
 │   ├── core/                 # Core business logic
 │   ├── utils/                # Utility functions with build script
 │   ├── cli/                  # CLI application
-│   ├── api/                  # API library
-│   ├── db/                   # Database abstraction
 │   └── shared/               # Shared types and utilities
 └── apps/                     # Executable applications
-    ├── demo/                 # Demo CLI application
-    └── server/               # Server application
+    └── demo/                 # Demo CLI application
 ```
 
 **Test Features**:
@@ -116,7 +113,6 @@ rust_test_workspace/
 - ✅ **Feature flags** - Optional features and conditional deps
 - ✅ **Multiple binaries** - CLI tools, examples, apps
 - ✅ **Integration tests** - Full workspace testing
-- ✅ **Complex dependency graph** - Async, serialization, HTTP
 
 ## Testing cargo-buckal Features
 
@@ -199,6 +195,28 @@ After running the test script, validate:
 - Multi-platform builds succeed
 - Platform-specific dependencies are correct
 - os_deps/os_named_deps are properly generated
+
+## Key Testing Points
+
+### `resolve_first_party_label()` Function
+This workspace specifically tests the `resolve_first_party_label()` function which:
+- Resolves first-party dependencies to Buck2 target labels
+- Executes `buck2 targets` commands for dependency discovery
+- Handles caching of resolved labels
+- Converts Cargo package names to Buck2 target paths
+
+### Build Script Handling
+The `rust-test-utils` crate tests:
+- Build script rule generation (`buildscript_build`, `buildscript_run`)
+- Generated file inclusion
+- Environment variable passing
+- Platform-specific configuration
+
+### First-Party vs Third-Party Dependencies
+The workspace validates:
+- Correct resolution of workspace member dependencies
+- Proper handling of external crate dependencies
+- Mixed dependency scenarios
 
 ## Troubleshooting
 
