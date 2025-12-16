@@ -13,18 +13,28 @@ release:
 clean:
 	cargo clean --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
 
+check:
+	cargo fmt --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
+	cargo clippy --locked --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
+	cargo check --locked --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
+	cargo test --locked --manifest-path "{{root}}/cargo-buckal/Cargo.toml"
+
 test-fd:
 	cd "{{root}}"
-	uv run test/buckal_fd_build.py --test --keep-rust-test
+	uv run test/buckal_fd_build.py --keep-rust-test --test
+
+test-fd-quick:
+	cd "{{root}}"
+	uv run test/buckal_fd_build.py --keep-rust-test
 
 test-fd-release:
 	cd "{{root}}"
-	uv run test/buckal_fd_build.py --test --keep-rust-test --inplace
+	uv run test/buckal_fd_build.py --keep-rust-test --test --inplace
 
 test-full:
 	cd "{{root}}"
-	uv run test/buckal_fd_build.py --test --keep-rust-test --multi-platform
-	uv run test/buckal_fd_build.py --test --keep-rust-test --multi-platform --supported-platform-only 
+	uv run test/buckal_fd_build.py --keep-rust-test --test --multi-platform
+	uv run test/buckal_fd_build.py --keep-rust-test --test --multi-platform --supported-platform-only 
 
 actions-latest repo="yueneiqi/fd-test" branch="":
 	uv run "{{root}}/test/github_actions_latest.py" --repo "{{repo}}"{{ if branch != "" { " --branch " + branch } else { "" } }}
