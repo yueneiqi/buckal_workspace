@@ -7,19 +7,19 @@ Buckal currently emits BUCK rules tied to the host platform. Platform-conditiona
 
 ## Decisions
 - Platform dictionary: Tier1 triples captured in `SUPPORTED_TARGETS` with OS mapping; package allowlist overrides (`PACKAGE_PLATFORMS`) remain for OS‑only crates (e.g., `hyper-named-pipe`).
-- Cfg parsing: `cargo_platform::Platform` is matched against cached `rustc --print=cfg --target <triple>` output for supported triples. If parsing/matching yields no OS, treat dependency as universal.
+- Cfg parsing: `cargo_platform::Platform` is matched against cached `rustc --print=cfg --target <triple>` output for supported triples. If matching yields no OS, treat dependency as universal by default; with `--supported-platform-only`, deps that only target unsupported platforms are omitted.
 - Emission: edges carry `os_deps`/`os_named_deps` keyed by OS; unconditional deps stay in `deps`/`named_deps`. Nodes currently set `compatible_with` only from the allowlist; deriving it from cfg is a follow‑up.
 - Bundles: rust_* wrapper rules accept `os_deps` and `os_named_deps`, expanding into `select({platform: deps, "DEFAULT": base})`. Empty maps keep today’s deps.
 - Caching: cache fingerprints do **not** yet include platform model revision; needs follow‑up (or cache version bump) when platform dictionary changes.
 
 ## Risks / Trade-offs
-- Missing Buck platform definitions in host repo could break select resolution; fallback will collapse `os_deps` into normal deps when no platforms are configured.
+- If the active Buck target platform does not satisfy the expected OS constraint keys, `select()` falls back to `"DEFAULT"` and OS-specific deps may be omitted.
 - Complex cfg expressions may still be under-modeled; fallback-to-universal prioritizes build success over strictness.
 - Build script platform vs target differences need validation to ensure `compatible_with` does not block required host execution.
 
 ## Migration Plan
 - Land platform model + cfg parsing behind default-on logic.
-- Regenerate BUCK via `cargo buckal migrate` once; confirm cross-platform builds (or via `buck2 --target-platform`).
+- Regenerate BUCK via `cargo buckal migrate` once; confirm cross-platform builds (or via `buck2 --target-platforms`).
 - Update docs and sample workspace to guide validation.
 
 ## Open Questions

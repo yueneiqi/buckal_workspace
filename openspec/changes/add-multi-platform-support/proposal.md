@@ -6,7 +6,7 @@ Generated BUCK rules today are tied to the host platform that ran `cargo buckal 
 Recent CI cross-build logs (2025‑12‑12) show that cross‑compiling on Linux from x86_64 to `aarch64-unknown-linux-gnu` fails at link time with mixed host/target artifacts. The root cause is that Buckal emitted OS labels like `prelude//os:linux`, which do not match the canonical prelude constraint values (`prelude//os/constraints:linux`) used by Buck2 platform definitions. This prevents OS‑scoped selects/compatibility from activating under `--target-platforms`, leaving some targets built in the exec configuration.
 
 ## What Changes
-- Introduce a Tier1 host OS model mapping Rust triples to Buck prelude OS constraints (explicitly covering `x86_64-apple-darwin`) for cfg evaluation and rule generation.
+- Introduce a Tier1 host OS model mapping Rust triples to Buck prelude OS constraints (explicitly covering `aarch64-apple-darwin`) for cfg evaluation and rule generation.
 - Parse Cargo target-specific dependency clauses and emit `os_deps` / `os_named_deps` on generated `rust_*` rules.
 - Apply `compatible_with` to OS‑only crates via a package allowlist now, with follow‑up work to derive compatibility directly from cfg expressions.
 - Emit canonical prelude constraint labels (`prelude//os/constraints:*`) for both `compatible_with` and `os_deps` selects so Buck2 cross‑builds (including cross‑arch on the same OS) resolve the correct dependency graph.
