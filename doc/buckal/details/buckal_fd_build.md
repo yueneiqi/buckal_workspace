@@ -8,7 +8,7 @@
 - `buck2 init`：如果临时目录内没有 `.buckconfig` 则初始化。
 - 生成 BUCK：`cargo run --manifest-path cargo-buckal/Cargo.toml -- buckal migrate --buck2`，可选再 `--fetch` 更新 bundle。
 - 绑定本地规则：将仓库内的 `buckal-bundles` 拷贝到工作区 `buckal/`，并把 `.buckconfig` 的 buckal cell 指向该本地路径。
-- 兼容补丁（可通过 `--no-patch-num-jobs` 关闭）：在拷贝的 `cargo_buildscript.bzl` 里注入 `NUM_JOBS=1`，避免部分 build.rs 期望 Cargo 环境时 panic。
+- buildscript 环境：bundle 的 buildscript runner 会设置 `NUM_JOBS`（默认=可用 CPU 数，可通过 `.buckconfig` 的 `[buckal] num_jobs` 覆盖），避免部分 build.rs 期望 Cargo 环境时 panic。
 - 清理加载项（可通过 `--keep-rust-test` 关闭）：如果生成的 BUCK 中包含 `rust_test` 但当前 bundle 不提供，则移除该 load 以防解析报错。
 - 构建：`buck2 build <buck2-target>`（默认 `//:fd`）。
 - 可选测试：加 `--test` 时执行 `buck2 test <buck2-test-target>`（默认 `//...`）。
@@ -23,17 +23,17 @@
 - `--buck2-target`：构建目标，默认 `//:fd`。
 - `--test`：构建成功后再跑 `buck2 test`。
 - `--buck2-test-target`：测试目标，默认 `//...`。
-- `--no-patch-num-jobs`：不要为 buildscript 注入 `NUM_JOBS=1`。
 - `--keep-rust-test`：保留 BUCK 里对 `rust_test` 的 load（如果当前 bundle 支持，可加上）。
 
 ## 环境细节
 - 设置 `PYO3_PYTHON` 为当前 `python3`，并补齐 `LD_LIBRARY_PATH`（或 macOS 下 `DYLD_LIBRARY_PATH`）以保证 `cargo-buckal` 动态链接到正确的 libpython。
 - 使用独立的 `CARGO_TARGET_DIR=target/buckal-py`，防止重用旧的二进制导致 Python ABI 不匹配。
 
-### Q: 为什么在拷贝的 `cargo_buildscript.bzl` 里注入 `NUM_JOBS=1`？
+### Q: 为什么需要为 buildscript 设置 `NUM_JOBS`？
 - Buck2 的 buildscript 运行环境默认没有 Cargo 的变量，而不少 `build.rs`（如 `tikv-jemalloc-sys`）会 `expect_env("NUM_JOBS")`，缺失就 panic。
-- 注入 `env["NUM_JOBS"] = "1"` 是最小仿真 Cargo 行为的补丁：有值即可通过检查，且默认 1 避免误导并行度。
-- 改动仅作用于工作区里拷贝的 bundle，不影响上游仓库。
+- 在 buckal bundle 里默认设置 `NUM_JOBS`（默认值为可用 CPU 数）是最小仿真 Cargo 行为的补丁：有值即可通过检查，并可通过配置覆盖。
+- 如需调整，可在 `.buckconfig` 里设置：
+  - `[buckal] num_jobs = 8`
 
 ## 示例
 ```bash

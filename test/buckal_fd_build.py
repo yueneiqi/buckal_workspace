@@ -282,11 +282,6 @@ def main() -> None:
         help="buck2 test target to run when --test is set (default: //...)",
     )
     parser.add_argument(
-        "--no-patch-num-jobs",
-        action="store_true",
-        help="skip injecting NUM_JOBS=1 into the copied cargo_buildscript.bzl",
-    )
-    parser.add_argument(
         "--keep-rust-test",
         action="store_true",
         help="do not strip rust_test from the generated BUCK load statement",
@@ -423,13 +418,6 @@ def main() -> None:
             if bundle_dst.exists():
                 shutil.rmtree(bundle_dst)
             shutil.copytree(bundle_src, bundle_dst)
-            buildscript_bzl = bundle_dst / "cargo_buildscript.bzl"
-            if buildscript_bzl.exists() and not args.no_patch_num_jobs:
-                content = buildscript_bzl.read_text()
-                marker = 'env["RUST_BACKTRACE"] = "1"\n'
-                if marker in content and "NUM_JOBS" not in content:
-                    content = content.replace(marker, marker + '    env["NUM_JOBS"] = "1"\n')
-                    buildscript_bzl.write_text(content)
         bundle_cell_path = "buckal"
         if buckconfig_path.exists():
             sections: dict[str, list[str]] = {}
@@ -463,7 +451,7 @@ def main() -> None:
                 "",
             ]
 
-            for key in ("parser", "build", "project"):
+            for key in ("parser", "build", "project", "buckal"):
                 if key in sections:
                     out_lines.append(f"[{key}]")
                     out_lines += sections[key]
