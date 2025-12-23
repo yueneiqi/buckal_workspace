@@ -35,10 +35,77 @@ Buckal 架构分为 CLI、Snapshot、Core（buckify）和 Prelude（bundles）�
 
 ## bundles 更新（fetch）
 
-`cargo buckal migrate --fetch` 仅更新 `.buckconfig` 中的 `[external_cell_buckal]` 段，把 `commit_hash` 改成远端最新 sha，不重新初始化 Buck2 工程。对应实现见：
+`cargo buckal migrate --fetch` 用于更新 buckal-bundles 到最新版本，同时重新生成 BUCK 文件。
+
+### 功能说明
+
+该命令执行以下操作：
+
+1. **获取最新 commit hash**：通过 GitHub API 查询 `buck2hub/buckal-bundles` 仓库的最新 commit sha。
+2. **更新 `.buckconfig`**：修改 `[external_cell_buckal]` 段，将 `commit_hash` 更新为最新值。
+3. **重新生成 BUCK 文件**：基于 Cargo 元数据和缓存差异，更新项目中的 BUCK 文件。
+
+### 使用场景
+
+- 升级 bundles 规则以获取 bug 修复或新功能
+- 解决因 bundles 版本不匹配导致的构建错误
+- 确保使用最新的 Rust 规则实现
+
+### 注意事项
+
+- `--fetch` 与 `--buck2` 互斥，不能同时使用。`--buck2` 用于初始化 Buck2 工程，而 `--fetch` 假设工程已初始化。
+- 如果 GitHub API 请求失败，会退回到 `DEFAULT_BUNDLE_HASH` 固定版本。
+
+### 实现位置
 
 - `cargo-buckal/src/commands/migrate.rs`
 - `cargo-buckal/src/bundles.rs:fetch_buckal_cell()`
+
+## migrate 命令对比
+
+`cargo buckal migrate` 有两种主要模式：标准模式和初始化模式（`--buck2`）。
+
+### `cargo buckal migrate`（标准模式）
+
+用于在已有 Buck2 工程中重新生成 BUCK 文件：
+
+1. **检查 Buck2 工程**：验证当前目录是有效的 Buck2 package
+2. **读取 Cargo 元数据**：解析 `Cargo.toml` 和依赖关系
+3. **差异化生成**：基于缓存只更新变化的 BUCK 文件
+
+适用场景：
+- 添加/移除 Cargo 依赖后同步 BUCK 文件
+- 修改 crate 配置后重新生成
+
+### `cargo buckal migrate --buck2`（初始化模式）
+
+用于首次设置或重新初始化 Buck2 工程，在标准模式基础上额外执行：
+
+1. **跳过 Buck2 工程检查**：不要求已有 Buck2 配置
+2. **初始化 Buck2**：执行 `buck2 init`
+3. **创建第三方目录**：创建 `RUST_CRATES_ROOT` 目录
+4. **更新 `.gitignore`**：追加 `/buck-out`
+5. **配置 buckal cell**：在 `.buckconfig` 中设置 `[external_cell_buckal]`
+6. **初始化 cfg modifiers**：设置平台配置
+
+适用场景：
+- 将现有 Cargo 项目迁移到 Buck2
+- 重新初始化损坏的 Buck2 配置
+
+### 功能对比表
+
+| 功能 | `migrate` | `migrate --buck2` |
+|------|-----------|-------------------|
+| 要求已有 Buck2 工程 | 是 | 否 |
+| 执行 `buck2 init` | 否 | 是 |
+| 创建第三方目录 | 否 | 是 |
+| 更新 `.gitignore` | 否 | 是 |
+| 配置 buckal cell | 否 | 是 |
+| 生成 BUCK 文件 | 是 | 是 |
+
+### 实现位置
+
+- `cargo-buckal/src/commands/migrate.rs:execute()`
 
 ## BUCK 生成时的依赖方式
 

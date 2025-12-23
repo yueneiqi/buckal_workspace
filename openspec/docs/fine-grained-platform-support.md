@@ -596,13 +596,13 @@ rust_library(
 
 ```bash
 # Build for Android
-buck2 build //... --target-platforms buckal//config/platforms:aarch64-linux-android
+buck2 build //... --target-platforms buckal//platforms:aarch64-linux-android
 
 # Build for FreeBSD
-buck2 build //... --target-platforms buckal//config/platforms:x86_64-unknown-freebsd
+buck2 build //... --target-platforms buckal//platforms:x86_64-unknown-freebsd
 
 # Build for Emscripten (WASM)
-buck2 build //... --target-platforms buckal//config/platforms:wasm32-unknown-emscripten
+buck2 build //... --target-platforms buckal//platforms:wasm32-unknown-emscripten
 ```
 
 ---
@@ -655,7 +655,7 @@ cargo buckal clean
 cargo buckal migrate --os-granularity=fine
 
 # Validate cross-platform builds
-buck2 build //... --target-platforms buckal//config/platforms:aarch64-linux-android
+buck2 build //... --target-platforms buckal//platforms:aarch64-linux-android
 ```
 
 ### 6.3 Toolchain Updates

@@ -9,7 +9,6 @@
 - 生成 BUCK：`cargo run --manifest-path cargo-buckal/Cargo.toml -- buckal migrate --buck2`，可选再 `--fetch` 更新 bundle。
 - 绑定本地规则：将仓库内的 `buckal-bundles` 拷贝到工作区 `buckal/`，并把 `.buckconfig` 的 buckal cell 指向该本地路径。
 - buildscript 环境：bundle 的 buildscript runner 会设置 `NUM_JOBS`（默认=可用 CPU 数，可通过 `.buckconfig` 的 `[buckal] num_jobs` 覆盖），避免部分 build.rs 期望 Cargo 环境时 panic。
-- 清理加载项（可通过 `--keep-rust-test` 关闭）：如果生成的 BUCK 中包含 `rust_test` 但当前 bundle 不提供，则移除该 load 以防解析报错。
 - 构建：`buck2 build <buck2-target>`（默认 `//:fd`）。
 - 可选测试：加 `--test` 时执行 `buck2 test <buck2-test-target>`（默认 `//...`）。
 - `--inplace` 模式下构建/测试成功后，会 `git add -A && git commit` 并 `git push --force-with-lease origin HEAD:main` 触发 CI（可用 `--no-push` 关闭）。
@@ -23,7 +22,6 @@
 - `--buck2-target`：构建目标，默认 `//:fd`。
 - `--test`：构建成功后再跑 `buck2 test`。
 - `--buck2-test-target`：测试目标，默认 `//...`。
-- `--keep-rust-test`：保留 BUCK 里对 `rust_test` 的 load（如果当前 bundle 支持，可加上）。
 
 ## 环境细节
 - 设置 `PYO3_PYTHON` 为当前 `python3`，并补齐 `LD_LIBRARY_PATH`（或 macOS 下 `DYLD_LIBRARY_PATH`）以保证 `cargo-buckal` 动态链接到正确的 libpython。

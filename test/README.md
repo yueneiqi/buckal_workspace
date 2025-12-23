@@ -69,7 +69,6 @@ uv run test/buckal_fd_build.py --target=rust_test_workspace --multi-platform
 | `--multi-platform` | Build for additional platforms | False |
 | `--test` | Run buck2 test after build | False |
 | `--buck2-test-target TARGET` | Test target | `//...` |
-| `--keep-rust-test` | Keep rust_test in load statements | False |
 | `--no-fetch` | Skip fetching buckal bundles | False |
 | `--supported-platform-only` | Only generate for supported platforms | False |
 | `--inplace-branch NAME` | Custom branch name for inplace mode | Auto-generated |

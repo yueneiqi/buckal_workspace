@@ -21,20 +21,20 @@ check:
 
 test-fd:
 	cd "{{root}}"
-	uv run test/buckal_fd_build.py --keep-rust-test --test
+	uv run test/buckal_fd_build.py --test
 
 test-fd-quick:
 	cd "{{root}}"
-	uv run test/buckal_fd_build.py --keep-rust-test
+	uv run test/buckal_fd_build.py
 
 test-fd-release:
 	cd "{{root}}"
-	uv run test/buckal_fd_build.py --keep-rust-test --test --inplace
+	uv run test/buckal_fd_build.py --test --inplace
 
 test-full:
 	cd "{{root}}"
-	uv run test/buckal_fd_build.py --keep-rust-test --test --multi-platform
-	uv run test/buckal_fd_build.py --keep-rust-test --test --multi-platform --supported-platform-only 
+	uv run test/buckal_fd_build.py --test --multi-platform
+	uv run test/buckal_fd_build.py --test --multi-platform --supported-platform-only 
 
 actions-latest repo="yueneiqi/fd-test" branch="":
 	uv run "{{root}}/test/github_actions_latest.py" --repo "{{repo}}"{{ if branch != "" { " --branch " + branch } else { "" } }}

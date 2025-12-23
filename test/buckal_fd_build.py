@@ -155,19 +155,19 @@ def detect_host_os_group() -> str:
 def multi_platform_targets(host: str) -> tuple[str, ...]:
     if host == "linux":
         return (
-            "buckal//config/platforms:x86_64-unknown-linux-gnu",
-            "buckal//config/platforms:i686-unknown-linux-gnu",
-            "buckal//config/platforms:aarch64-unknown-linux-gnu",
+            "buckal//platforms:x86_64-unknown-linux-gnu",
+            "buckal//platforms:i686-unknown-linux-gnu",
+            "buckal//platforms:aarch64-unknown-linux-gnu",
         )
     if host == "windows":
         return (
-            "buckal//config/platforms:x86_64-pc-windows-msvc",
-            "buckal//config/platforms:i686-pc-windows-msvc",
-            "buckal//config/platforms:aarch64-pc-windows-msvc",
-            "buckal//config/platforms:x86_64-pc-windows-gnu",
+            "buckal//platforms:x86_64-pc-windows-msvc",
+            "buckal//platforms:i686-pc-windows-msvc",
+            "buckal//platforms:aarch64-pc-windows-msvc",
+            "buckal//platforms:x86_64-pc-windows-gnu",
         )
     if host == "macos":
-        return ("buckal//config/platforms:aarch64-apple-darwin",)
+        return ("buckal//platforms:aarch64-apple-darwin",)
     raise ValueError(f"Unexpected host: {host!r}")
 
 
@@ -280,11 +280,6 @@ def main() -> None:
         "--buck2-test-target",
         default="//...",
         help="buck2 test target to run when --test is set (default: //...)",
-    )
-    parser.add_argument(
-        "--keep-rust-test",
-        action="store_true",
-        help="do not strip rust_test from the generated BUCK load statement",
     )
     parser.add_argument(
         "--no-fetch",
@@ -409,80 +404,62 @@ def main() -> None:
                 ]
             run(fetch_cmd, cwd=workspace, env=env)
 
-        # Point the buckal cell to local bundled rules (vendored into the workspace)
-        # to ensure os_deps/rust_test support.
-        # Skip when --origin is set (use fetched bundles instead).
-        if not args.origin:
-            bundle_src = (REPO_ROOT / "buckal-bundles").resolve()
-            bundle_dst = workspace / "buckal"
-            if bundle_dst.exists():
-                shutil.rmtree(bundle_dst)
-            shutil.copytree(bundle_src, bundle_dst)
-        bundle_cell_path = "buckal"
-        if buckconfig_path.exists():
-            sections: dict[str, list[str]] = {}
-            current = None
-            for line in buckconfig_path.read_text().splitlines():
-                if line.strip().startswith("[") and line.strip().endswith("]"):
-                    current = line.strip()[1:-1]
-                    sections.setdefault(current, [])
-                elif current:
-                    sections[current].append(line)
+        # # Point the buckal cell to local bundled rules (vendored into the workspace)
+        # # to ensure os_deps/rust_test support.
+        # # Skip when --origin is set (use fetched bundles instead).
+        # if not args.origin:
+        #     bundle_src = (REPO_ROOT / "buckal-bundles").resolve()
+        #     bundle_dst = workspace / "buckal"
+        #     if bundle_dst.exists():
+        #         shutil.rmtree(bundle_dst)
+        #     shutil.copytree(bundle_src, bundle_dst)
+        # bundle_cell_path = "buckal"
+        # if buckconfig_path.exists():
+        #     sections: dict[str, list[str]] = {}
+        #     current = None
+        #     for line in buckconfig_path.read_text().splitlines():
+        #         if line.strip().startswith("[") and line.strip().endswith("]"):
+        #             current = line.strip()[1:-1]
+        #             sections.setdefault(current, [])
+        #         elif current:
+        #             sections[current].append(line)
 
-            out_lines: list[str] = []
-            out_lines += [
-                "[cells]",
-                "  root = .",
-                "  prelude = prelude",
-                f"  toolchains = {bundle_cell_path}/config/toolchains",
-                "  none = none",
-                f"  buckal = {bundle_cell_path}",
-                "",
-            ]
+        #     out_lines: list[str] = []
+        #     out_lines += [
+        #         "[cells]",
+        #         "  root = .",
+        #         "  prelude = prelude",
+        #         f"  toolchains = {bundle_cell_path}/config/toolchains",
+        #         "  none = none",
+        #         f"  buckal = {bundle_cell_path}",
+        #         "",
+        #     ]
 
-            if "cell_aliases" in sections:
-                out_lines.append("[cell_aliases]")
-                out_lines += sections["cell_aliases"]
-                out_lines.append("")
+        #     if "cell_aliases" in sections:
+        #         out_lines.append("[cell_aliases]")
+        #         out_lines += sections["cell_aliases"]
+        #         out_lines.append("")
 
-            out_lines += [
-                "[external_cells]",
-                "  prelude = bundled",
-                "",
-            ]
+        #     out_lines += [
+        #         "[external_cells]",
+        #         "  prelude = bundled",
+        #         "",
+        #     ]
 
-            for key in ("parser", "build", "project", "buckal"):
-                if key in sections:
-                    out_lines.append(f"[{key}]")
-                    out_lines += sections[key]
-                    out_lines.append("")
+        #     for key in ("parser", "build", "project", "buckal"):
+        #         if key in sections:
+        #             out_lines.append(f"[{key}]")
+        #             out_lines += sections[key]
+        #             out_lines.append("")
 
-            buckconfig_path.write_text("\n".join(out_lines).rstrip() + "\n")
+        #     buckconfig_path.write_text("\n".join(out_lines).rstrip() + "\n")
 
-        # We use the bundled toolchains/platforms under `buckal/config/*`, so
-        # remove any `buck2 init` scaffolding to avoid confusion.
-        for dirname in ("toolchains", "platforms"):
-            path = workspace / dirname
-            if path.exists():
-                shutil.rmtree(path, ignore_errors=True)
-
-        # The pinned buckal bundle may not export rust_test; drop it from the load
-        # statement in the generated BUCK file to avoid parse errors.
-        buck_file = workspace / "BUCK"
-        if buck_file.exists() and not args.keep_rust_test:
-            lines = buck_file.read_text().splitlines()
-            new_lines = []
-            modified = False
-            for line in lines:
-                if "wrapper.bzl" in line and "rust_test" in line:
-                    new_lines.append(
-                        'load("@buckal//:wrapper.bzl", "buildscript_run", "rust_binary", "rust_library")'
-                    )
-                    modified = True
-                else:
-                    new_lines.append(line)
-            if modified:
-                buck_file.write_text("\n".join(new_lines) + "\n")
+        # # We use the bundled toolchains/platforms under `buckal/config/*`, so
+        # # remove any `buck2 init` scaffolding to avoid confusion.
+        # for dirname in ("toolchains", "platforms"):
+        #     path = workspace / dirname
+        #     if path.exists():
+        #         shutil.rmtree(path, ignore_errors=True)
 
         if not args.skip_build:
             # Step 2: build with Buck2.
