@@ -155,19 +155,19 @@ def detect_host_os_group() -> str:
 def multi_platform_targets(host: str) -> tuple[str, ...]:
     if host == "linux":
         return (
-            "buckal//platforms:x86_64-unknown-linux-gnu",
-            "buckal//platforms:i686-unknown-linux-gnu",
-            "buckal//platforms:aarch64-unknown-linux-gnu",
+            "//platforms:x86_64-unknown-linux-gnu",
+            "//platforms:i686-unknown-linux-gnu",
+            "//platforms:aarch64-unknown-linux-gnu",
         )
     if host == "windows":
         return (
-            "buckal//platforms:x86_64-pc-windows-msvc",
-            "buckal//platforms:i686-pc-windows-msvc",
-            "buckal//platforms:aarch64-pc-windows-msvc",
-            "buckal//platforms:x86_64-pc-windows-gnu",
+            "//platforms:x86_64-pc-windows-msvc",
+            "//platforms:i686-pc-windows-msvc",
+            "//platforms:aarch64-pc-windows-msvc",
+            "//platforms:x86_64-pc-windows-gnu",
         )
     if host == "macos":
-        return ("buckal//platforms:aarch64-apple-darwin",)
+        return ("//platforms:aarch64-apple-darwin",)
     raise ValueError(f"Unexpected host: {host!r}")
 
 
@@ -368,6 +368,13 @@ def main() -> None:
         if not buckconfig_path.exists():
             run(["buck2", "init"], cwd=workspace, env=env)
 
+        # We use the bundled toolchains/platforms under `buckal/config/*`, so
+        # remove any `buck2 init` scaffolding to avoid confusion.
+        for dirname in ("toolchains", "platforms"):
+            path = workspace / dirname
+            if path.exists():
+                shutil.rmtree(path, ignore_errors=True)
+
         # Step 1: generate Buck2 files via cargo-buckal (initializes Buck2 if needed).
         if args.origin:
             migrate_cmd = ["cargo", "buckal", "migrate", "--buck2"]
@@ -453,13 +460,6 @@ def main() -> None:
         #             out_lines.append("")
 
         #     buckconfig_path.write_text("\n".join(out_lines).rstrip() + "\n")
-
-        # # We use the bundled toolchains/platforms under `buckal/config/*`, so
-        # # remove any `buck2 init` scaffolding to avoid confusion.
-        # for dirname in ("toolchains", "platforms"):
-        #     path = workspace / dirname
-        #     if path.exists():
-        #         shutil.rmtree(path, ignore_errors=True)
 
         if not args.skip_build:
             # Step 2: build with Buck2.
