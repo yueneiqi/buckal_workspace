@@ -3,11 +3,12 @@
 Generate Buck2 build files for Rust test projects with cargo-buckal and
 build the binaries using Buck2.
 
-Supports four test targets:
+Supports five test targets:
 1. fd project (original functionality) - use --target=fd
 2. rust_test_workspace (comprehensive test) - use --target=rust_test_workspace
 3. first_party_demo (first-party demo project) - use --target=first_party_demo
 4. libra project (git-like CLI) - use --target=libra
+5. git-internal project (git internals library) - use --target=git-internal
 
 By default the script copies the sample project to a temporary directory to avoid
 dirtying the repo. Use `--inplace` to run directly in the sample directory.
@@ -31,6 +32,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FD_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "fd"
 LIBRA_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "libra"
+GIT_INTERNAL_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "git-internal"
 RUST_TEST_WORKSPACE_DIR = REPO_ROOT / "test" / "rust_test_workspace"
 FIRST_PARTY_DEMO_DIR = REPO_ROOT / "test" / "first-party-demo"
 CARGO_BUCKAL_MANIFEST = REPO_ROOT / "cargo-buckal" / "Cargo.toml"
@@ -170,22 +172,23 @@ def detect_host_os_group() -> str:
     )
 
 
-def multi_platform_targets(host: str) -> tuple[str, ...]:
+def multi_platform_targets(host: str, use_cross: bool = False) -> tuple[str, ...]:
+    suffix = "-cross" if use_cross else ""
     if host == "linux":
         return (
-            "//platforms:x86_64-unknown-linux-gnu",
-            "//platforms:i686-unknown-linux-gnu",
-            "//platforms:aarch64-unknown-linux-gnu",
+            f"//platforms:x86_64-unknown-linux-gnu{suffix}",
+            f"//platforms:i686-unknown-linux-gnu{suffix}",
+            f"//platforms:aarch64-unknown-linux-gnu{suffix}",
         )
     if host == "windows":
         return (
-            "//platforms:x86_64-pc-windows-msvc",
-            "//platforms:i686-pc-windows-msvc",
-            "//platforms:aarch64-pc-windows-msvc",
-            "//platforms:x86_64-pc-windows-gnu",
+            f"//platforms:x86_64-pc-windows-msvc{suffix}",
+            f"//platforms:i686-pc-windows-msvc{suffix}",
+            f"//platforms:aarch64-pc-windows-msvc{suffix}",
+            f"//platforms:x86_64-pc-windows-gnu{suffix}",
         )
     if host == "macos":
-        return ("//platforms:aarch64-apple-darwin",)
+        return (f"//platforms:aarch64-apple-darwin{suffix}",)
     raise ValueError(f"Unexpected host: {host!r}")
 
 
@@ -239,12 +242,17 @@ def get_sample_dir(args: argparse.Namespace) -> Path:
         return FD_SAMPLE_DIR
     elif args.target == "libra":
         return LIBRA_SAMPLE_DIR
+    elif args.target == "git-internal":
+        return GIT_INTERNAL_SAMPLE_DIR
     elif args.target == "rust_test_workspace":
         return RUST_TEST_WORKSPACE_DIR
     elif args.target == "first_party_demo":
         return FIRST_PARTY_DEMO_DIR
     else:
-        sys.exit(f"Unknown target: {args.target}. Use 'fd', 'libra', 'rust_test_workspace', or 'first_party_demo'.")
+        sys.exit(
+            "Unknown target: {target}. Use 'fd', 'libra', 'git-internal', "
+            "'rust_test_workspace', or 'first_party_demo'.".format(target=args.target)
+        )
 
 
 def get_default_buck2_target(args: argparse.Namespace) -> str:
@@ -252,6 +260,8 @@ def get_default_buck2_target(args: argparse.Namespace) -> str:
     if args.target == "fd":
         return "//:fd"
     elif args.target == "libra":
+        return "//..."
+    elif args.target == "git-internal":
         return "//..."
     elif args.target == "rust_test_workspace":
         return "//apps/demo:demo"
@@ -261,11 +271,98 @@ def get_default_buck2_target(args: argparse.Namespace) -> str:
         return "//..."  # Fallback
 
 
+def patch_libra_openssl_sys_i686(workspace: Path) -> None:
+    """Inject i686 OpenSSL buildscript env for the libra sample workspace."""
+    buck_path = (
+        workspace
+        / "third-party"
+        / "rust"
+        / "crates"
+        / "openssl-sys"
+        / "0.9.111"
+        / "BUCK"
+    )
+    if not buck_path.exists():
+        print(f"[warn] openssl-sys BUCK not found at {buck_path}; skipping patch.")
+        return
+
+    contents = buck_path.read_text()
+    if "i686-unknown-linux-gnu" in contents and "OPENSSL_LIB_DIR" in contents:
+        print("[info] openssl-sys i686 env patch already present.")
+        return
+
+    marker = '    manifest_dir = ":openssl-sys-vendor",\n'
+    if marker not in contents:
+        print("[warn] openssl-sys buildscript_run marker not found; skipping patch.")
+        return
+
+    platform_block = (
+        "    platform = {\n"
+        '        "i686-unknown-linux-gnu": {\n'
+        "            \"env\": {\n"
+        '                "OPENSSL_LIB_DIR": "/usr/lib/i386-linux-gnu",\n'
+        '                "OPENSSL_INCLUDE_DIR": "/usr/include",\n'
+        '                "PKG_CONFIG_ALLOW_CROSS": "1",\n'
+        '                "PKG_CONFIG_PATH": "/usr/lib/i386-linux-gnu/pkgconfig:/usr/lib/pkgconfig",\n'
+        "            },\n"
+        "        },\n"
+        "    },\n"
+    )
+
+    buck_path.write_text(contents.replace(marker, marker + platform_block))
+    print("[ok] patched openssl-sys buildscript env for i686.")
+
+
+def cross_toml_contents(packages_with_arch: tuple[str, ...], packages_no_arch: tuple[str, ...]) -> str:
+    packages: list[str] = [f"{pkg}:$CROSS_DEB_ARCH" for pkg in packages_with_arch]
+    packages.extend(packages_no_arch)
+    package_list = " ".join(packages)
+    return "\n".join(
+        [
+            "# @generated by test/buckal_fd_build.py",
+            "# Cross.toml config for cross-rs/cross.",
+            "",
+            "[target.x86_64-unknown-linux-gnu]",
+            "pre-build = [",
+            '  "dpkg --add-architecture $CROSS_DEB_ARCH",',
+            f'  "apt-get update && apt-get --assume-yes install {package_list}",',
+            "]",
+            "",
+            "[target.i686-unknown-linux-gnu]",
+            "pre-build = [",
+            '  "dpkg --add-architecture $CROSS_DEB_ARCH",',
+            f'  "apt-get update && apt-get --assume-yes install {package_list}",',
+            "]",
+            "",
+            "[target.aarch64-unknown-linux-gnu]",
+            "pre-build = [",
+            '  "dpkg --add-architecture $CROSS_DEB_ARCH",',
+            f'  "apt-get update && apt-get --assume-yes install {package_list}",',
+            "]",
+            "",
+        ]
+    )
+
+
+def ensure_cross_toml(
+    workspace: Path, packages_with_arch: tuple[str, ...], packages_no_arch: tuple[str, ...]
+) -> None:
+    cross_path = workspace / "Cross.toml"
+    contents = cross_toml_contents(packages_with_arch, packages_no_arch)
+    if cross_path.exists():
+        existing = cross_path.read_text()
+        if "# @generated by test/buckal_fd_build.py" not in existing:
+            print(f"[warn] Cross.toml already exists at {cross_path}; skipping overwrite.")
+            return
+    cross_path.write_text(contents)
+    print(f"[ok] wrote Cross.toml at {cross_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--target",
-        choices=["fd", "libra", "rust_test_workspace", "first_party_demo"],
+        choices=["fd", "libra", "git-internal", "rust_test_workspace", "first_party_demo"],
         default="fd",
         help="Test target to use (default: fd)",
     )
@@ -451,6 +548,20 @@ def main() -> None:
                 ]
             run(fetch_cmd, cwd=workspace, env=env)
 
+        if args.target == "libra":
+            patch_libra_openssl_sys_i686(workspace)
+            ensure_cross_toml(
+                workspace,
+                packages_with_arch=("libssl-dev", "zlib1g-dev"),
+                packages_no_arch=("pkg-config",),
+            )
+        elif args.target == "git-internal":
+            ensure_cross_toml(
+                workspace,
+                packages_with_arch=("zlib1g-dev",),
+                packages_no_arch=("pkg-config",),
+            )
+
         # # Point the buckal cell to local bundled rules (vendored into the workspace)
         # # to ensure os_deps/rust_test support.
         # # Skip when --origin is set (use fetched bundles instead).
@@ -511,8 +622,11 @@ def main() -> None:
             if args.multi_platform:
                 host = detect_host_os_group()
                 print(f"[info] Detected host OS group: {host}")
+                use_cross = args.target in ("libra", "git-internal")
+                if use_cross:
+                    print("[info] Using cross toolchain via *-cross platforms.")
                 ensure_valid_buck2_daemon(workspace, env)
-                for platform in multi_platform_targets(host):
+                for platform in multi_platform_targets(host, use_cross=use_cross):
                     run(
                         ["buck2", "build", args.buck2_target, "--target-platforms", platform],
                         cwd=workspace,
