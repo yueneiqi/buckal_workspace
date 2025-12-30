@@ -1,8 +1,10 @@
 # Test Utilities
 
-- `buckal_fd_build.py`: End-to-end helper that first checks out `base` in `test/3rd/fd` (and when `--inplace`, forks a fresh branch from `base`), then copies `test/3rd/fd` to a temp dir (or `--inplace`), runs `buck2 init`, generates Buck2 files via local `cargo-buckal`, vendors local `buckal-bundles`, then builds (and optionally tests) with Buck2. In `--inplace` mode, after a successful build/test it commits all fd changes and force-with-lease pushes `HEAD:main` to trigger CI (disable with `--no-push`).
-  - Default: `uv run test/buckal_fd_build.py`
-  - In-place: `uv run test/buckal_fd_build.py --inplace`
+- `buckal_fd_build.py`: End-to-end helper for testing cargo-buckal with multiple targets. Supports `--target={fd,libra,rust_test_workspace,first_party_demo}`. For git-enabled targets (fd, libra), it checks out the base branch and optionally forks a fresh branch from it. Then copies the project to a temp dir (or `--inplace`), runs `buck2 init`, generates Buck2 files via local `cargo-buckal`, then builds (and optionally tests) with Buck2.
+  - Default (fd): `uv run test/buckal_fd_build.py`
+  - Libra: `uv run test/buckal_fd_build.py --target=libra`
+  - Clean existing Buck2 files (for libra): `--clean-buck2`
+  - In-place: `--inplace`
   - Skip bundle fetch: `--no-fetch`
   - Run tests: `--test [--buck2-test-target //...]`
   - Keep workspace for inspection: `--keep-temp`

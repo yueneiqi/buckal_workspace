@@ -3,10 +3,11 @@
 Generate Buck2 build files for Rust test projects with cargo-buckal and
 build the binaries using Buck2.
 
-Supports three test targets:
+Supports four test targets:
 1. fd project (original functionality) - use --target=fd
 2. rust_test_workspace (comprehensive test) - use --target=rust_test_workspace
 3. first_party_demo (first-party demo project) - use --target=first_party_demo
+4. libra project (git-like CLI) - use --target=libra
 
 By default the script copies the sample project to a temporary directory to avoid
 dirtying the repo. Use `--inplace` to run directly in the sample directory.
@@ -29,6 +30,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FD_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "fd"
+LIBRA_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "libra"
 RUST_TEST_WORKSPACE_DIR = REPO_ROOT / "test" / "rust_test_workspace"
 FIRST_PARTY_DEMO_DIR = REPO_ROOT / "test" / "first-party-demo"
 CARGO_BUCKAL_MANIFEST = REPO_ROOT / "cargo-buckal" / "Cargo.toml"
@@ -62,19 +64,34 @@ def git_run(cmd: list[str], cwd: Path, env: dict[str, str], capture: bool = Fals
     return None
 
 
+def is_git_target(target: str) -> bool:
+    """Check if the target is a git repository that supports git operations."""
+    return target in ("fd", "libra")
+
+
+def get_base_branch(target: str) -> str:
+    """Get the base branch for a git-enabled target."""
+    if target == "fd":
+        return "base"
+    elif target == "libra":
+        return "main"
+    else:
+        return "main"  # Fallback
+
+
 def ensure_on_base_and_branch(
     args: argparse.Namespace, env: dict[str, str], sample_dir: Path
 ) -> tuple[str | None, str | None]:
     """Ensure sample repo is on base branch.
-    
+
     For --inplace runs, create and switch to a fresh branch from base.
     Returns (original_branch, inplace_branch).
     """
-    # Only perform git operations for fd project (which is a git repo)
-    if args.target != "fd":
+    # Only perform git operations for git-enabled targets
+    if not is_git_target(args.target):
         print(f"Skipping git operations for {args.target} (not a git repository)")
         return None, None
-        
+
     try:
         git_run(["rev-parse", "--is-inside-work-tree"], cwd=sample_dir, env=env)
     except subprocess.CalledProcessError:
@@ -87,11 +104,12 @@ def ensure_on_base_and_branch(
             f"Repo at {sample_dir} has uncommitted changes; please commit/stash before running."
         )
 
+    base_branch = get_base_branch(args.target)
     original_branch = git_run(
         ["rev-parse", "--abbrev-ref", "HEAD"], cwd=sample_dir, env=env, capture=True
     )
-    if original_branch != "base":
-        git_run(["checkout", "base"], cwd=sample_dir, env=env)
+    if original_branch != base_branch:
+        git_run(["checkout", base_branch], cwd=sample_dir, env=env)
 
     inplace_branch = None
     if args.inplace:
@@ -194,10 +212,10 @@ def ensure_valid_buck2_daemon(cwd: Path, env: dict[str, str]) -> None:
 def commit_and_push_inplace(
     args: argparse.Namespace, env: dict[str, str], sample_dir: Path, inplace_branch: str | None
 ) -> None:
-    # Only perform git operations for fd project
-    if args.target != "fd":
+    # Only perform git operations for git-enabled targets
+    if not is_git_target(args.target):
         return
-        
+
     if not args.inplace or args.no_push:
         return
     if not inplace_branch:
@@ -219,18 +237,22 @@ def get_sample_dir(args: argparse.Namespace) -> Path:
     """Get the sample directory based on the target argument."""
     if args.target == "fd":
         return FD_SAMPLE_DIR
+    elif args.target == "libra":
+        return LIBRA_SAMPLE_DIR
     elif args.target == "rust_test_workspace":
         return RUST_TEST_WORKSPACE_DIR
     elif args.target == "first_party_demo":
         return FIRST_PARTY_DEMO_DIR
     else:
-        sys.exit(f"Unknown target: {args.target}. Use 'fd', 'rust_test_workspace', or 'first_party_demo'.")
+        sys.exit(f"Unknown target: {args.target}. Use 'fd', 'libra', 'rust_test_workspace', or 'first_party_demo'.")
 
 
 def get_default_buck2_target(args: argparse.Namespace) -> str:
     """Get the default Buck2 target based on the test target."""
     if args.target == "fd":
         return "//:fd"
+    elif args.target == "libra":
+        return "//..."
     elif args.target == "rust_test_workspace":
         return "//apps/demo:demo"
     elif args.target == "first_party_demo":
@@ -243,7 +265,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--target",
-        choices=["fd", "rust_test_workspace", "first_party_demo"],
+        choices=["fd", "libra", "rust_test_workspace", "first_party_demo"],
         default="fd",
         help="Test target to use (default: fd)",
     )
@@ -305,6 +327,11 @@ def main() -> None:
         action="store_true",
         help="use installed cargo-buckal instead of local dev version and skip local bundle copy",
     )
+    parser.add_argument(
+        "--clean-buck2",
+        action="store_true",
+        help="clean existing Buck2/Buckal files before generating (like CI's clean_existing_buck2_and_buckal)",
+    )
     args = parser.parse_args()
 
     # Set default buck2 target based on test target if not specified
@@ -360,10 +387,23 @@ def main() -> None:
         workspace = temp_dir / args.target
         shutil.copytree(sample_dir, workspace)
         print(f"Copied sample workspace to {workspace}")
-        if original_branch and original_branch != "base":
+        base_branch = get_base_branch(args.target) if is_git_target(args.target) else None
+        if original_branch and base_branch and original_branch != base_branch:
             git_run(["checkout", original_branch], cwd=sample_dir, env=env)
 
     try:
+        # Optionally clean existing Buck2/Buckal files (like CI's clean_existing_buck2_and_buckal)
+        if args.clean_buck2:
+            print("Cleaning existing Buck2/Buckal files...")
+            for filename in ("buckal.snap", ".buckconfig", ".buckroot", "BUCK", "buckal.toml"):
+                path = workspace / filename
+                if path.exists():
+                    path.unlink()
+            for dirname in ("third-party", "toolchains", "platforms"):
+                path = workspace / dirname
+                if path.exists():
+                    shutil.rmtree(path, ignore_errors=True)
+
         buckconfig_path = workspace / ".buckconfig"
         if not buckconfig_path.exists():
             run(["buck2", "init"], cwd=workspace, env=env)

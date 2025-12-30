@@ -10,17 +10,27 @@ The main test script that generates Buck2 build files and validates cargo-buckal
 
 #### Test Targets
 
-The script supports two test targets:
+The script supports four test targets:
 
 1. **fd** (default) - Original test using the fd project
    - **Source**: `test/3rd/fd/`
    - **Default Buck2 target**: `//:fd`
    - **Purpose**: Basic cargo-buckal functionality validation
 
-2. **rust_test_workspace** - Comprehensive test workspace
+2. **libra** - Git-like CLI written in Rust
+   - **Source**: `test/3rd/libra/`
+   - **Default Buck2 target**: `//...`
+   - **Purpose**: Testing cargo-buckal with existing Buck2 files that need regeneration
+
+3. **rust_test_workspace** - Comprehensive test workspace
    - **Source**: `test/rust_test_workspace/`
    - **Default Buck2 target**: `//apps/demo:demo`
    - **Purpose**: Advanced cargo-buckal features testing
+
+4. **first_party_demo** - First-party demo project
+   - **Source**: `test/first-party-demo/`
+   - **Default Buck2 target**: `//:demo-root`
+   - **Purpose**: Testing first-party dependency resolution
 
 #### Usage Examples
 
@@ -37,6 +47,21 @@ uv run test/buckal_fd_build.py --target=fd --multi-platform
 
 # Test with build and run
 uv run test/buckal_fd_build.py --target=fd --test
+```
+
+##### Test libra project (with existing Buck2 files)
+```bash
+# Basic test with temp workspace (regenerates Buck2 files)
+uv run test/buckal_fd_build.py --target=libra
+
+# Clean and regenerate Buck2 files from scratch
+uv run test/buckal_fd_build.py --target=libra --clean-buck2
+
+# In-place test with existing Buck2 files cleaned
+uv run test/buckal_fd_build.py --target=libra --inplace --clean-buck2
+
+# Run all tests
+uv run test/buckal_fd_build.py --target=libra --test
 ```
 
 ##### Test rust_test_workspace (comprehensive)
@@ -61,7 +86,7 @@ uv run test/buckal_fd_build.py --target=rust_test_workspace --multi-platform
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--target {fd,rust_test_workspace}` | Test target to use | `fd` |
+| `--target {fd,libra,rust_test_workspace,first_party_demo}` | Test target to use | `fd` |
 | `--inplace` | Run directly in sample directory | False |
 | `--keep-temp` | Keep temporary workspace | False |
 | `--buck2-target TARGET` | Buck2 target to build | Depends on `--target` |
@@ -73,6 +98,8 @@ uv run test/buckal_fd_build.py --target=rust_test_workspace --multi-platform
 | `--supported-platform-only` | Only generate for supported platforms | False |
 | `--inplace-branch NAME` | Custom branch name for inplace mode | Auto-generated |
 | `--no-push` | Skip committing/pushing changes | False |
+| `--origin` | Use installed cargo-buckal instead of local dev | False |
+| `--clean-buck2` | Clean existing Buck2/Buckal files before generating | False |
 
 ## Test Workspaces
 
@@ -86,7 +113,21 @@ uv run test/buckal_fd_build.py --target=rust_test_workspace --multi-platform
 - Build scripts
 - Platform-specific dependencies
 
-### 2. rust_test_workspace (`test/rust_test_workspace/`)
+### 2. libra Project (`test/3rd/libra/`)
+
+**Purpose**: Testing cargo-buckal with projects that have existing Buck2 files
+
+**Features**:
+- Git-like CLI written in Rust
+- Pre-existing Buck2/Buckal configuration
+- Tests regeneration of Buck2 files (use `--clean-buck2`)
+- Multiple integration tests
+
+**Git Repository**:
+- Base branch: `main`
+- Supports inplace mode with branch creation
+
+### 3. rust_test_workspace (`test/rust_test_workspace/`)
 
 **Purpose**: Comprehensive test workspace for advanced cargo-buckal features
 
