@@ -492,7 +492,7 @@ def main() -> None:
         # Optionally clean existing Buck2/Buckal files (like CI's clean_existing_buck2_and_buckal)
         if args.clean_buck2:
             print("Cleaning existing Buck2/Buckal files...")
-            for filename in ("buckal.snap", ".buckconfig", ".buckroot", "BUCK", "buckal.toml"):
+            for filename in ("buckal.snap", ".buckconfig", ".buckroot", "BUCK"):
                 path = workspace / filename
                 if path.exists():
                     path.unlink()
