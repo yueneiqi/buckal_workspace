@@ -622,7 +622,8 @@ def main() -> None:
             if args.multi_platform:
                 host = detect_host_os_group()
                 print(f"[info] Detected host OS group: {host}")
-                use_cross = args.target in ("libra", "git-internal")
+                # use_cross = args.target in ("libra", "git-internal")
+                use_cross = False
                 if use_cross:
                     print("[info] Using cross toolchain via *-cross platforms.")
                 ensure_valid_buck2_daemon(workspace, env)
