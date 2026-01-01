@@ -212,6 +212,61 @@ def ensure_valid_buck2_daemon(cwd: Path, env: dict[str, str]) -> None:
         subprocess.run(["buck2", "kill"], cwd=cwd, env=env, check=False)
 
 
+def ensure_buck2_file_watcher(workspace: Path, env: dict[str, str], watcher: str) -> None:
+    buckconfig_path = workspace / ".buckconfig"
+    if not buckconfig_path.exists():
+        return
+
+    contents = buckconfig_path.read_text()
+    lines = contents.splitlines()
+    out_lines: list[str] = []
+    in_buck2 = False
+    found_buck2 = False
+    set_file_watcher = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if in_buck2 and not set_file_watcher:
+                out_lines.append(f"file_watcher = {watcher}")
+                set_file_watcher = True
+            section = stripped[1:-1].strip()
+            in_buck2 = section == "buck2"
+            if in_buck2:
+                found_buck2 = True
+            out_lines.append(line)
+            continue
+
+        if in_buck2:
+            key = stripped.split("#", 1)[0].split(";", 1)[0].strip()
+            if key.startswith("file_watcher"):
+                prefix = line[: len(line) - len(line.lstrip())]
+                out_lines.append(f"{prefix}file_watcher = {watcher}")
+                set_file_watcher = True
+                continue
+
+        out_lines.append(line)
+
+    if in_buck2 and not set_file_watcher:
+        out_lines.append(f"file_watcher = {watcher}")
+        set_file_watcher = True
+
+    if not found_buck2:
+        if out_lines and out_lines[-1].strip():
+            out_lines.append("")
+        out_lines.append("[buck2]")
+        out_lines.append(f"file_watcher = {watcher}")
+        set_file_watcher = True
+
+    new_contents = "\n".join(out_lines)
+    if contents.endswith("\n"):
+        new_contents += "\n"
+    if new_contents != contents:
+        buckconfig_path.write_text(new_contents)
+        print(f"[ok] set buck2.file_watcher = {watcher} in {buckconfig_path}")
+        subprocess.run(["buck2", "kill"], cwd=workspace, env=env, check=False)
+
+
 def commit_and_push_inplace(
     args: argparse.Namespace, env: dict[str, str], sample_dir: Path, inplace_branch: str | None
 ) -> None:
@@ -511,6 +566,10 @@ def main() -> None:
             path = workspace / dirname
             if path.exists():
                 shutil.rmtree(path, ignore_errors=True)
+
+        # Avoid inotify watcher limits on Linux by using the hash crawler watcher.
+        if sys.platform.startswith("linux"):
+            ensure_buck2_file_watcher(workspace, env, "fs_hash_crawler")
 
         # Step 1: generate Buck2 files via cargo-buckal (initializes Buck2 if needed).
         if args.origin:
