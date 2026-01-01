@@ -3,12 +3,13 @@
 Generate Buck2 build files for Rust test projects with cargo-buckal and
 build the binaries using Buck2.
 
-Supports five test targets:
+Supports six test targets:
 1. fd project (original functionality) - use --target=fd
 2. rust_test_workspace (comprehensive test) - use --target=rust_test_workspace
 3. first_party_demo (first-party demo project) - use --target=first_party_demo
 4. libra project (git-like CLI) - use --target=libra
 5. git-internal project (git internals library) - use --target=git-internal
+6. cargo-buckal project (cargo-buckal CLI) - use --target=cargo-buckal
 
 By default the script copies the sample project to a temporary directory to avoid
 dirtying the repo. Use `--inplace` to run directly in the sample directory.
@@ -33,6 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FD_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "fd"
 LIBRA_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "libra"
 GIT_INTERNAL_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "git-internal"
+CARGO_BUCKAL_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "cargo-buckal"
 RUST_TEST_WORKSPACE_DIR = REPO_ROOT / "test" / "rust_test_workspace"
 FIRST_PARTY_DEMO_DIR = REPO_ROOT / "test" / "first-party-demo"
 CARGO_BUCKAL_MANIFEST = REPO_ROOT / "cargo-buckal" / "Cargo.toml"
@@ -299,6 +301,8 @@ def get_sample_dir(args: argparse.Namespace) -> Path:
         return LIBRA_SAMPLE_DIR
     elif args.target == "git-internal":
         return GIT_INTERNAL_SAMPLE_DIR
+    elif args.target == "cargo-buckal":
+        return CARGO_BUCKAL_SAMPLE_DIR
     elif args.target == "rust_test_workspace":
         return RUST_TEST_WORKSPACE_DIR
     elif args.target == "first_party_demo":
@@ -306,7 +310,9 @@ def get_sample_dir(args: argparse.Namespace) -> Path:
     else:
         sys.exit(
             "Unknown target: {target}. Use 'fd', 'libra', 'git-internal', "
-            "'rust_test_workspace', or 'first_party_demo'.".format(target=args.target)
+            "'cargo-buckal', 'rust_test_workspace', or 'first_party_demo'.".format(
+                target=args.target
+            )
         )
 
 
@@ -318,6 +324,8 @@ def get_default_buck2_target(args: argparse.Namespace) -> str:
         return "//..."
     elif args.target == "git-internal":
         return "//..."
+    elif args.target == "cargo-buckal":
+        return "//:cargo-buckal"
     elif args.target == "rust_test_workspace":
         return "//apps/demo:demo"
     elif args.target == "first_party_demo":
@@ -417,7 +425,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--target",
-        choices=["fd", "libra", "git-internal", "rust_test_workspace", "first_party_demo"],
+        choices=[
+            "fd",
+            "libra",
+            "git-internal",
+            "cargo-buckal",
+            "rust_test_workspace",
+            "first_party_demo",
+        ],
         default="fd",
         help="Test target to use (default: fd)",
     )
