@@ -45,6 +45,19 @@ def run(cmd: list[str], cwd: Path, env: dict[str, str]) -> None:
     subprocess.run(cmd, cwd=cwd, env=env, check=True)
 
 
+def run_capture(cmd: list[str], cwd: Path, env: dict[str, str]) -> str:
+    print(f"+ {' '.join(cmd)} (cwd={cwd})")
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        env=env,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    return result.stdout
+
+
 def ensure_tool(tool: str) -> None:
     if shutil.which(tool):
         return
@@ -428,6 +441,52 @@ def ensure_cross_toml(
     print(f"[ok] wrote Cross.toml at {cross_path}")
 
 
+def parse_buck2_show_output(output: str, target: str) -> Path:
+    for line in output.splitlines():
+        parts = line.strip().split(None, 1)
+        if not parts:
+            continue
+        label = parts[0]
+        if not (label == target or label.endswith(target)):
+            continue
+        if len(parts) == 2:
+            return Path(parts[1])
+    raise RuntimeError(f"Failed to parse buck2 output for {target}: {output!r}")
+
+
+def ensure_fd_test_symlink(workspace: Path, env: dict[str, str]) -> None:
+    test_output = run_capture(
+        ["buck2", "build", "//:tests", "--show-output"],
+        cwd=workspace,
+        env=env,
+    )
+    fd_output = run_capture(
+        ["buck2", "build", "//:fd", "--show-output"],
+        cwd=workspace,
+        env=env,
+    )
+    test_bin = parse_buck2_show_output(test_output, "//:tests")
+    fd_bin = parse_buck2_show_output(fd_output, "//:fd")
+    if not test_bin.is_absolute():
+        test_bin = (workspace / test_bin).resolve()
+    if not fd_bin.is_absolute():
+        fd_bin = (workspace / fd_bin).resolve()
+    test_root = test_bin.parent.parent
+    link_path = test_root / fd_bin.name
+    if link_path.exists() or link_path.is_symlink():
+        if link_path.is_symlink() and link_path.resolve() == fd_bin.resolve():
+            return
+        if link_path.is_dir():
+            shutil.rmtree(link_path)
+        else:
+            link_path.unlink()
+    try:
+        link_path.symlink_to(fd_bin)
+    except OSError:
+        shutil.copy2(fd_bin, link_path)
+    print(f"[ok] linked {link_path} -> {fd_bin}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -722,6 +781,8 @@ def main() -> None:
             # Optional: run the test suite.
             if args.test:
                 ensure_valid_buck2_daemon(workspace, env)
+                if args.target == "fd":
+                    ensure_fd_test_symlink(workspace, env)
                 run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
                 print("[ok] Buck2 tests finished")
 
