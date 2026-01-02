@@ -206,6 +206,11 @@ def main() -> None:
         action="store_true",
         help="download logs for jobs whose name starts with 'b2'; saves failed job logs to files",
     )
+    parser.add_argument(
+        "--match-all",
+        action="store_true",
+        help="when used with --dump-log, match all jobs instead of only names starting with 'b2'",
+    )
     args = parser.parse_args()
 
     token = args.token or os.getenv("GITHUB_TOKEN") or os.getenv("GITHUB_ACCESS_TOKEN")
@@ -234,10 +239,16 @@ def main() -> None:
 
     if args.dump_log:
         jobs = list_jobs(run["id"], args.repo, token)
-        matched = [j for j in jobs if str(j.get("name", "")).startswith("b2")]
-        if not matched:
-            print("No jobs with name starting with 'b2' found.", file=sys.stderr)
-            return
+        if args.match_all:
+            matched = jobs
+            if not matched:
+                print("No jobs found for this run.", file=sys.stderr)
+                return
+        else:
+            matched = [j for j in jobs if str(j.get("name", "")).startswith("b2")]
+            if not matched:
+                print("No jobs with name starting with 'b2' found.", file=sys.stderr)
+                return
 
         date_slug = make_date_slug(run.get("created_at"))
         log_dir = REPO_ROOT / "log" / date_slug

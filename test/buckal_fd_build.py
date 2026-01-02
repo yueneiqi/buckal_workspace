@@ -407,6 +407,13 @@ def cross_toml_contents(packages_with_arch: tuple[str, ...], packages_no_arch: t
     )
 
 
+def ensure_fd_buckal_toml(workspace: Path) -> None:
+    buckal_toml = workspace / "buckal.toml"
+    contents = "ignore_tests = false\n"
+    buckal_toml.write_text(contents)
+    print(f"[ok] wrote {buckal_toml} to include ignore_tests = false")
+
+
 def ensure_cross_toml(
     workspace: Path, packages_with_arch: tuple[str, ...], packages_no_arch: tuple[str, ...]
 ) -> None:
@@ -585,6 +592,9 @@ def main() -> None:
         # Avoid inotify watcher limits on Linux by using the hash crawler watcher.
         if sys.platform.startswith("linux"):
             ensure_buck2_file_watcher(workspace, env, "fs_hash_crawler")
+
+        if args.target == "fd":
+            ensure_fd_buckal_toml(workspace)
 
         # Step 1: generate Buck2 files via cargo-buckal (initializes Buck2 if needed).
         if args.origin:
