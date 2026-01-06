@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -38,6 +39,8 @@ CARGO_BUCKAL_SAMPLE_DIR = REPO_ROOT / "test" / "3rd" / "cargo-buckal"
 RUST_TEST_WORKSPACE_DIR = REPO_ROOT / "test" / "rust_test_workspace"
 FIRST_PARTY_DEMO_DIR = REPO_ROOT / "test" / "first-party-demo"
 CARGO_BUCKAL_MANIFEST = REPO_ROOT / "cargo-buckal" / "Cargo.toml"
+CARGO_BUCKAL_MAIN_RS = REPO_ROOT / "cargo-buckal" / "src" / "main.rs"
+BUCKAL_BUNDLES_DIR = REPO_ROOT / "buckal-bundles"
 
 
 def run(cmd: list[str], cwd: Path, env: dict[str, str]) -> None:
@@ -420,6 +423,52 @@ def cross_toml_contents(packages_with_arch: tuple[str, ...], packages_no_arch: t
     )
 
 
+def update_bundles(env: dict[str, str]) -> None:
+    """Push buckal-bundles HEAD:main and update DEFAULT_BUNDLE_HASH in cargo-buckal."""
+    if not BUCKAL_BUNDLES_DIR.exists():
+        sys.exit(f"buckal-bundles directory not found at {BUCKAL_BUNDLES_DIR}")
+    if not CARGO_BUCKAL_MAIN_RS.exists():
+        sys.exit(f"cargo-buckal main.rs not found at {CARGO_BUCKAL_MAIN_RS}")
+
+    # Get current HEAD hash in buckal-bundles
+    current_hash = git_run(
+        ["rev-parse", "HEAD"], cwd=BUCKAL_BUNDLES_DIR, env=env, capture=True
+    )
+    if not current_hash:
+        sys.exit("Failed to get HEAD hash from buckal-bundles")
+    print(f"[info] Current buckal-bundles HEAD: {current_hash}")
+
+    # Push HEAD:main in buckal-bundles
+    print("[info] Pushing buckal-bundles HEAD:main...")
+    git_run(["push", "origin", "HEAD:main"], cwd=BUCKAL_BUNDLES_DIR, env=env)
+    print("[ok] Pushed buckal-bundles to origin/main")
+
+    # Update DEFAULT_BUNDLE_HASH and BUCKAL_BUNDLES_REPO in cargo-buckal/src/main.rs
+    main_rs_content = CARGO_BUCKAL_MAIN_RS.read_text()
+
+    # Update DEFAULT_BUNDLE_HASH
+    new_content, count1 = re.subn(
+        r'pub const DEFAULT_BUNDLE_HASH: &str = "[^"]+";',
+        f'pub const DEFAULT_BUNDLE_HASH: &str = "{current_hash}";',
+        main_rs_content,
+    )
+    if count1 == 0:
+        sys.exit("Failed to find DEFAULT_BUNDLE_HASH in main.rs")
+
+    # Update BUCKAL_BUNDLES_REPO
+    new_content, count2 = re.subn(
+        r'pub const BUCKAL_BUNDLES_REPO: &str = "[^"]+";',
+        'pub const BUCKAL_BUNDLES_REPO: &str = "yueneiqi/buckal-bundles";',
+        new_content,
+    )
+    if count2 == 0:
+        sys.exit("Failed to find BUCKAL_BUNDLES_REPO in main.rs")
+
+    CARGO_BUCKAL_MAIN_RS.write_text(new_content)
+    print(f"[ok] Updated DEFAULT_BUNDLE_HASH to {current_hash}")
+    print('[ok] Updated BUCKAL_BUNDLES_REPO to "yueneiqi/buckal-bundles"')
+
+
 def ensure_fd_buckal_toml(workspace: Path) -> None:
     buckal_toml = workspace / "buckal.toml"
     contents = "ignore_tests = false\n"
@@ -565,7 +614,19 @@ def main() -> None:
         action="store_true",
         help="clean existing Buck2/Buckal files before generating (like CI's clean_existing_buck2_and_buckal)",
     )
+    parser.add_argument(
+        "--update-bundles",
+        action="store_true",
+        help="push buckal-bundles HEAD:main and update DEFAULT_BUNDLE_HASH in cargo-buckal, then exit",
+    )
     args = parser.parse_args()
+
+    # Handle --update-bundles early and exit
+    if args.update_bundles:
+        ensure_tool("git")
+        env = os.environ.copy()
+        update_bundles(env)
+        return
 
     # Set default buck2 target based on test target if not specified
     if args.buck2_target is None:
