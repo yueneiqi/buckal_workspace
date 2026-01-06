@@ -608,6 +608,12 @@ def main() -> None:
     if combined:
         env[ld_var] = combined
 
+    # Set LIBRARY_PATH for link-time library search (needed for pyo3/python linking)
+    existing_lib_path = env.get("LIBRARY_PATH", "")
+    lib_path_combined = ":".join([d for d in lib_dirs if d] + ([existing_lib_path] if existing_lib_path else []))
+    if lib_path_combined:
+        env["LIBRARY_PATH"] = lib_path_combined
+
     original_branch, inplace_branch = ensure_on_base_and_branch(args, env, sample_dir)
 
     workspace: Path
@@ -754,6 +760,21 @@ def main() -> None:
         #             out_lines.append("")
 
         #     buckconfig_path.write_text("\n".join(out_lines).rstrip() + "\n")
+
+        # Inject Python library paths into the C++ toolchain for pyo3 linking
+        if lib_dirs:
+            cxx_toolchain_path = workspace / "toolchains" / "cxx" / "demo_cxx.bzl"
+            if cxx_toolchain_path.exists():
+                content = cxx_toolchain_path.read_text()
+                # Build -L flags for each library directory
+                link_flag_list = ", ".join(f'"-L{d}"' for d in lib_dirs if d)
+                # Replace the link_flags for Linux to include Python library paths
+                old_link_flags = 'link_flags = select({\n            "prelude//os/constraints:linux": ["-fuse-ld=bfd"],'
+                new_link_flags = f'link_flags = select({{\n            "prelude//os/constraints:linux": ["-fuse-ld=bfd", {link_flag_list}],'
+                if old_link_flags in content:
+                    content = content.replace(old_link_flags, new_link_flags)
+                    cxx_toolchain_path.write_text(content)
+                    print(f"[info] Injected library paths into toolchain: {lib_dirs}")
 
         if not args.skip_build:
             # Step 2: build with Buck2.
