@@ -619,6 +619,11 @@ def main() -> None:
         action="store_true",
         help="push buckal-bundles HEAD:main and update DEFAULT_BUNDLE_HASH in cargo-buckal, then exit",
     )
+    parser.add_argument(
+        "--cargo-buckal-build",
+        action="store_true",
+        help="use 'cargo buckal build' instead of 'buck2 build'",
+    )
     args = parser.parse_args()
 
     # Handle --update-bundles early and exit
@@ -641,6 +646,9 @@ def main() -> None:
 
     if args.skip_build and (args.multi_platform or args.test):
         sys.exit("--skip-build is incompatible with --multi-platform/--test")
+
+    if args.cargo_buckal_build and args.multi_platform:
+        sys.exit("--cargo-buckal-build is incompatible with --multi-platform")
 
     ensure_tool("cargo")
     ensure_tool("buck2")
@@ -704,12 +712,8 @@ def main() -> None:
                 if path.exists():
                     shutil.rmtree(path, ignore_errors=True)
 
-        buckconfig_path = workspace / ".buckconfig"
-        if not buckconfig_path.exists():
-            run(["buck2", "init"], cwd=workspace, env=env)
-
         # We use the bundled toolchains/platforms under `buckal/config/*`, so
-        # remove any `buck2 init` scaffolding to avoid confusion.
+        # remove any buck2 init scaffolding to avoid confusion.
         for dirname in ("toolchains", "platforms"):
             path = workspace / dirname
             if path.exists():
@@ -838,10 +842,28 @@ def main() -> None:
                     print(f"[info] Injected library paths into toolchain: {lib_dirs}")
 
         if not args.skip_build:
-            # Step 2: build with Buck2.
-            ensure_valid_buck2_daemon(workspace, env)
-            run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
-            print("[ok] Buck2 build finished")
+            # Step 2: build with Buck2 or cargo-buckal.
+            if args.cargo_buckal_build:
+                # cargo buckal build uses cargo-style args, not Buck2 target syntax
+                if args.origin:
+                    build_cmd = ["cargo", "buckal", "build"]
+                else:
+                    build_cmd = [
+                        "cargo",
+                        "run",
+                        "--quiet",
+                        "--manifest-path",
+                        str(CARGO_BUCKAL_MANIFEST),
+                        "--",
+                        "buckal",
+                        "build",
+                    ]
+                run(build_cmd, cwd=workspace, env=env)
+                print("[ok] cargo buckal build finished")
+            else:
+                ensure_valid_buck2_daemon(workspace, env)
+                run(["buck2", "build", args.buck2_target], cwd=workspace, env=env)
+                print("[ok] Buck2 build finished")
 
             # Step 2b: optionally build for additional target platforms.
             if args.multi_platform:
@@ -862,11 +884,31 @@ def main() -> None:
 
             # Optional: run the test suite.
             if args.test:
-                ensure_valid_buck2_daemon(workspace, env)
-                if args.target == "fd":
-                    ensure_fd_test_symlink(workspace, env)
-                run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
-                print("[ok] Buck2 tests finished")
+                if args.cargo_buckal_build:
+                    # cargo buckal test uses cargo-style args, not Buck2 target syntax
+                    if args.origin:
+                        test_cmd = ["cargo", "buckal", "test"]
+                    else:
+                        test_cmd = [
+                            "cargo",
+                            "run",
+                            "--quiet",
+                            "--manifest-path",
+                            str(CARGO_BUCKAL_MANIFEST),
+                            "--",
+                            "buckal",
+                            "test",
+                        ]
+                    if args.target == "fd":
+                        ensure_fd_test_symlink(workspace, env)
+                    run(test_cmd, cwd=workspace, env=env)
+                    print("[ok] cargo buckal test finished")
+                else:
+                    ensure_valid_buck2_daemon(workspace, env)
+                    if args.target == "fd":
+                        ensure_fd_test_symlink(workspace, env)
+                    run(["buck2", "test", args.buck2_test_target], cwd=workspace, env=env)
+                    print("[ok] Buck2 tests finished")
 
         commit_and_push_inplace(args, env, sample_dir, inplace_branch)
     finally:
